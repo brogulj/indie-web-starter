@@ -1,0 +1,41 @@
+{
+	"name": "indie-web-starter-frontend",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"predev": "npm run templates:index && npm run pages:index && npm run collections-archive:index",
+		"prestart": "npm run templates:index && npm run pages:index && npm run collections-archive:index",
+		"css:build": "npx @tailwindcss/cli -i ./src/styles/input.css -o ./public/output.css",
+		"css:watch": "npx @tailwindcss/cli -i ./src/styles/input.css -o ./public/output.css --watch",
+		"dev": "npm run css:build && concurrently \"npm run css:watch\" \"npm run templates:index:watch\" \"npm run pages:index:watch\" \"npm run collections-archive:index:watch\" \"wrangler dev\"",
+		"deploy": "wrangler deploy",
+		"start": "wrangler dev",
+		"test": "vitest",
+		"cf-typegen": "wrangler types",
+		"collections:typegen": "node ./scripts/generate-collection-types.mjs",
+		"templates:index": "node ./scripts/generate-templates-index.mjs",
+		"templates:index:watch": "node ./scripts/generate-templates-index.mjs --watch",
+		"pages:index": "node ./scripts/generate-pages-index.mjs",
+		"pages:index:watch": "node ./scripts/generate-pages-index.mjs --watch",
+		"collections-archive:index": "node ./scripts/generate-collections-archive-index.mjs",
+		"collections-archive:index:watch": "node ./scripts/generate-collections-archive-index.mjs --watch"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"@tailwindcss/cli": "^4.2.1",
+		"@types/mustache": "^4.2.6",
+		"@types/node": "^25.5.0",
+		"@types/nunjucks": "^3.2.6",
+		"concurrently": "^9.2.1",
+		"tailwindcss": "^4.2.1",
+		"typescript": "^5.5.2",
+		"vitest": "~3.2.0",
+		"wrangler": "^4.75.0"
+	},
+	"dependencies": {
+		"hono": "^4.12.8",
+		"markdown-it": "^14.1.1",
+		"mustache": "^4.2.0",
+		"nunjucks": "^3.2.4"
+	}
+}
