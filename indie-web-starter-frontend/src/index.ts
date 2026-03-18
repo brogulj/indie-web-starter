@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import MarkdownIt from 'markdown-it';
+import { registerAuthRoutes } from './routes/auth';
 import { registerCollectionRoutes } from './routes/collections';
 import { registerInstructionRoutes } from './routes/instructions';
 import { registerPageRoutes } from './routes/pages';
@@ -11,10 +12,11 @@ const markdown = new MarkdownIt({
 	breaks: true,
 });
 
+registerAuthRoutes(app);
+registerInstructionRoutes(app);
 registerCollectionRoutes(app, {
 	renderMarkdown: (value) => markdown.render(value),
 });
-registerInstructionRoutes(app);
 registerPageRoutes(app);
 
 export default app;

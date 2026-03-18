@@ -1,5 +1,6 @@
 import { collectionArchiveRequiredData } from '../templates/collections-archive';
 import { collectionRequiredData } from '../templates/collections';
+import { requiredData as baseRequiredData } from '../templates/base';
 import { pageRequiredData } from '../templates/pages';
 import { parseRequiredDataConfig, type RequiredCollectionConfig } from '../types/required-data';
 import { sonicGetContent, type SonicCollectionContentItem } from '../utils/sonic';
@@ -79,4 +80,12 @@ export const resolveCollectionArchiveCollections = async (collection: string): P
 
 export const resolveCollectionItemCollections = async (collection: string): Promise<CollectionContentMap> => {
 	return resolveRequiredCollections(collectionRequiredData[collection], `collection-item:${collection}`);
+};
+
+export const resolveBaseCollections = async (): Promise<CollectionContentMap> => {
+	return resolveRequiredCollections(baseRequiredData, 'base');
+};
+
+export const mergeCollectionContentMaps = (...maps: CollectionContentMap[]): CollectionContentMap => {
+	return Object.assign({}, ...maps);
 };

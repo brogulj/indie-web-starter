@@ -19,6 +19,17 @@ export const base = (content: string) => /* html */ `
           <li><a href="/" class="inline-block border-2 border-stone-900 bg-white px-3 py-1 transition hover:-translate-y-0.5 hover:bg-yellow-100">Home</a></li>
           <li><a href="/blog-posts/hello-world" class="inline-block border-2 border-stone-900 bg-white px-3 py-1 transition hover:-translate-y-0.5 hover:bg-yellow-100">Blog</a></li>
           <li><a href="/music/hello-world" class="inline-block border-2 border-stone-900 bg-white px-3 py-1 transition hover:-translate-y-0.5 hover:bg-yellow-100">Music</a></li>
+          {{#isAuthenticated}}
+          <li><a href="/dashboard" class="inline-block border-2 border-stone-900 bg-cyan-100 px-3 py-1 transition hover:-translate-y-0.5 hover:bg-cyan-200">Dashboard</a></li>
+          <li>
+            <form method="post" action="/logout" class="inline">
+              <button type="submit" class="inline-block border-2 border-stone-900 bg-rose-100 px-3 py-1 transition hover:-translate-y-0.5 hover:bg-rose-200">Logout</button>
+            </form>
+          </li>
+          {{/isAuthenticated}}
+          {{^isAuthenticated}}
+          <li><a href="/login" class="inline-block border-2 border-stone-900 bg-lime-100 px-3 py-1 transition hover:-translate-y-0.5 hover:bg-lime-200">Login</a></li>
+          {{/isAuthenticated}}
         </ul>
       </div>
       <p class="mt-3 border-t-2 border-stone-900 pt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-stone-700 sm:text-xs">
@@ -42,3 +53,7 @@ export const base = (content: string) => /* html */ `
 </body>
 </html>
 `;
+
+export const requiredData = {
+	collections: [],
+};

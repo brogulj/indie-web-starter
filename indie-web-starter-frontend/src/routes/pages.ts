@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
+import { resolveAuthState } from './auth';
 import { render } from '../render';
-import { resolveCollectionArchiveCollections, resolvePageCollections } from '../services/required-collections';
+import { mergeCollectionContentMaps, resolveBaseCollections, resolveCollectionArchiveCollections, resolvePageCollections } from '../services/required-collections';
 import { defaultCollectionArchiveTemplate } from '../templates/collections-archive/default';
 import { collectionArchiveTemplates } from '../templates/collections-archive';
 import { notFoundTemplate } from '../templates/not-found';
@@ -23,18 +24,20 @@ export const routeWarningFor = (page: string, hasCollection: boolean, hasArchive
 	return undefined;
 };
 
-const renderPage = async (page: string): Promise<Response | null> => {
+const renderPage = async (page: string, auth: { isAuthenticated: boolean; authUser?: unknown }): Promise<Response | null> => {
 	const pageTemplate = pageTemplates[page];
 	if (!pageTemplate) return null;
 
-	const requiredCollections = await resolvePageCollections(page);
-	const [collections, hasArchiveTemplate] = await Promise.all([
+	const [baseCollections, pageCollections, collections, hasArchiveTemplate] = await Promise.all([
+		resolveBaseCollections(),
+		resolvePageCollections(page),
 		sonicGetCollectionsCached().catch((error) => {
 			console.error('Failed to load collections while resolving route overlaps', error);
 			return [];
 		}),
 		Promise.resolve(Boolean(collectionArchiveTemplates[page])),
 	]);
+	const requiredCollections = mergeCollectionContentMaps(baseCollections, pageCollections);
 	const hasCollection = collections.some((collection) => collection.name === page);
 	const routeWarning = routeWarningFor(page, hasCollection, hasArchiveTemplate);
 
@@ -43,6 +46,7 @@ const renderPage = async (page: string): Promise<Response | null> => {
 			title: toFieldLabel(page),
 			routeWarning,
 			collections: requiredCollections,
+			...auth,
 		}),
 		{ headers: { 'content-type': 'text/html; charset=UTF-8' } }
 	);
@@ -53,14 +57,16 @@ const isNotFoundError = (error: unknown): boolean => {
 };
 
 export const registerPageRoutes = (app: Hono): void => {
-	app.get('/', async () => {
-		const response = await renderPage('home');
+	app.get('/', async (c) => {
+		const auth = await resolveAuthState(c);
+		const response = await renderPage('home', auth);
 		return response ?? notFound();
 	});
 
 	app.get('/:page', async (c) => {
 		const page = c.req.param('page');
-		const pageResponse = await renderPage(page);
+		const auth = await resolveAuthState(c);
+		const pageResponse = await renderPage(page, auth);
 		if (pageResponse) return pageResponse;
 
 		try {
@@ -70,17 +76,20 @@ export const registerPageRoutes = (app: Hono): void => {
 				return c.html(render(notFoundTemplate, { title: '404' }), 404);
 			}
 
-			const [items, requiredCollections] = await Promise.all([
+			const [baseCollections, items, requiredCollections] = await Promise.all([
+				resolveBaseCollections(),
 				sonicGetContent(page),
 				resolveCollectionArchiveCollections(page),
 			]);
+			const mergedCollections = mergeCollectionContentMaps(baseCollections, requiredCollections);
 			const archiveItems = buildArchiveItems(page, items);
 			return c.html(
 				render(collectionArchiveTemplates[page] ?? defaultCollectionArchiveTemplate, {
 					title: `${page} Archive`,
 					collection: page,
 					items: archiveItems,
-					collections: requiredCollections,
+					collections: mergedCollections,
+					...auth,
 				})
 			);
 		} catch (error) {

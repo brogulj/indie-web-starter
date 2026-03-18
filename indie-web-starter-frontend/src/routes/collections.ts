@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
+import { resolveAuthState } from './auth';
 import { render } from '../render';
-import { resolveCollectionItemCollections } from '../services/required-collections';
+import { mergeCollectionContentMaps, resolveBaseCollections, resolveCollectionItemCollections } from '../services/required-collections';
 import { collectionContentTemplate } from '../templates/collection-content';
 import { collectionTemplates } from '../templates/collections';
 import { notFoundTemplate } from '../templates/not-found';
@@ -29,6 +30,7 @@ export const registerCollectionRoutes = (app: Hono, options: CollectionRouteOpti
 	app.get('/:collection/:slug', async (c) => {
 		const collection = c.req.param('collection');
 		const slug = c.req.param('slug');
+		const auth = await resolveAuthState(c);
 
 		try {
 			const content = await sonicGetContentBySlug(collection, slug);
@@ -37,10 +39,12 @@ export const registerCollectionRoutes = (app: Hono, options: CollectionRouteOpti
 			}
 
 			const renderedData = await sonicRenderRichTextFields(collection, content.data, options.renderMarkdown);
-			const [requiredCollections, template] = await Promise.all([
+			const [baseCollections, requiredCollections, template] = await Promise.all([
+				resolveBaseCollections(),
 				resolveCollectionItemCollections(collection),
 				Promise.resolve(collectionTemplates[collection] ?? collectionContentTemplate),
 			]);
+			const mergedCollections = mergeCollectionContentMaps(baseCollections, requiredCollections);
 			const fields = buildFieldView(renderedData);
 
 			return c.html(
@@ -51,7 +55,8 @@ export const registerCollectionRoutes = (app: Hono, options: CollectionRouteOpti
 					slug,
 					data: renderedData,
 					fields,
-					collections: requiredCollections,
+					collections: mergedCollections,
+					...auth,
 				})
 			);
 		} catch (error) {
