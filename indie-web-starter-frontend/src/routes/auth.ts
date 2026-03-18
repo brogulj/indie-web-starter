@@ -8,58 +8,42 @@ import { AuthApiError, authGetCurrentUser, authLogin } from '../utils/auth';
 const AUTH_COOKIE_NAME = 'auth_token';
 
 const loginTemplate = /* html */ `
-<main class="mx-auto grid w-full max-w-xl gap-4">
-  <section class="border-4 border-stone-900 bg-amber-50 p-5 shadow-[8px_8px_0_0_#1c1917]">
-    <p class="inline-block border-2 border-stone-900 bg-rose-200 px-3 py-1 font-mono text-xs font-bold uppercase tracking-[0.16em]">
-      Protected Access
-    </p>
-    <h1 class="mt-3 font-['Courier_New',ui-monospace,monospace] text-3xl font-black uppercase text-stone-900">
-      Sign In
-    </h1>
-    <p class="mt-2 font-serif text-stone-700">Use your backend account to access protected frontend routes.</p>
+<section class="border border-gray-300 p-4">
+  <h1 class="text-2xl font-semibold">Sign In</h1>
+  <p class="mt-2 text-sm text-gray-700">Use your account to continue.</p>
 
-    {{#authError}}
-    <p class="mt-4 border-2 border-red-900 bg-red-100 px-3 py-2 font-mono text-xs font-bold uppercase tracking-[0.12em] text-red-900">{{authError}}</p>
-    {{/authError}}
+  {{#authError}}
+  <p class="mt-3 border border-red-300 bg-red-50 p-2 text-sm text-red-700">{{authError}}</p>
+  {{/authError}}
 
-    <form method="post" action="/login{{#redirectTarget}}?redirect={{redirectTarget}}{{/redirectTarget}}" class="mt-5 space-y-3">
-      <label class="block">
-        <span class="mb-1 block font-mono text-xs font-bold uppercase tracking-[0.12em] text-stone-800">Email</span>
-        <input name="email" type="email" required value="{{email}}" class="w-full border-2 border-stone-900 bg-white px-3 py-2 font-mono text-sm text-stone-900" />
-      </label>
+  <form method="post" action="/login{{#redirectTarget}}?redirect={{redirectTarget}}{{/redirectTarget}}" class="mt-4 space-y-3">
+    <label class="block text-sm">
+      <span class="mb-1 block">Email</span>
+      <input name="email" type="email" required value="{{email}}" class="w-full border border-gray-300 px-3 py-2" />
+    </label>
 
-      <label class="block">
-        <span class="mb-1 block font-mono text-xs font-bold uppercase tracking-[0.12em] text-stone-800">Password</span>
-        <input name="password" type="password" required class="w-full border-2 border-stone-900 bg-white px-3 py-2 font-mono text-sm text-stone-900" />
-      </label>
+    <label class="block text-sm">
+      <span class="mb-1 block">Password</span>
+      <input name="password" type="password" required class="w-full border border-gray-300 px-3 py-2" />
+    </label>
 
-      <button type="submit" class="inline-block border-2 border-stone-900 bg-amber-200 px-4 py-2 font-mono text-xs font-bold uppercase tracking-[0.14em] text-stone-900 hover:bg-amber-300">
-        Login
-      </button>
-    </form>
-  </section>
-</main>
+    <button type="submit" class="border border-gray-300 bg-gray-100 px-4 py-2 text-sm">Login</button>
+  </form>
+</section>
 `;
 
 const dashboardTemplate = /* html */ `
-<main class="mx-auto grid w-full max-w-4xl gap-4">
-  <section class="border-4 border-stone-900 bg-amber-50 p-5 shadow-[8px_8px_0_0_#1c1917]">
-    <p class="inline-block border-2 border-stone-900 bg-cyan-200 px-3 py-1 font-mono text-xs font-bold uppercase tracking-[0.16em]">
-      Protected Route
-    </p>
-    <h1 class="mt-3 font-['Courier_New',ui-monospace,monospace] text-3xl font-black uppercase text-stone-900">
-      Dashboard
-    </h1>
-    <p class="mt-2 font-serif text-stone-700">This route is only available when JWT auth succeeds against the backend.</p>
+<section class="border border-gray-300 p-4">
+  <h1 class="text-2xl font-semibold">Dashboard</h1>
+  <p class="mt-2 text-sm text-gray-700">You are signed in.</p>
 
-    <dl class="mt-4 grid gap-2 sm:grid-cols-2">
-      <div class="border-2 border-stone-900 bg-white px-3 py-2"><dt class="font-mono text-xs font-bold uppercase">Email</dt><dd class="font-mono text-sm">{{user.email}}</dd></div>
-      <div class="border-2 border-stone-900 bg-white px-3 py-2"><dt class="font-mono text-xs font-bold uppercase">Role</dt><dd class="font-mono text-sm">{{user.role}}</dd></div>
-      <div class="border-2 border-stone-900 bg-white px-3 py-2"><dt class="font-mono text-xs font-bold uppercase">Username</dt><dd class="font-mono text-sm">{{user.username}}</dd></div>
-      <div class="border-2 border-stone-900 bg-white px-3 py-2"><dt class="font-mono text-xs font-bold uppercase">Name</dt><dd class="font-mono text-sm">{{user.firstName}} {{user.lastName}}</dd></div>
-    </dl>
-  </section>
-</main>
+  <dl class="mt-4 grid gap-2 sm:grid-cols-2 text-sm">
+    <div class="border border-gray-200 p-2"><dt>Email</dt><dd>{{user.email}}</dd></div>
+    <div class="border border-gray-200 p-2"><dt>Role</dt><dd>{{user.role}}</dd></div>
+    <div class="border border-gray-200 p-2"><dt>Username</dt><dd>{{user.username}}</dd></div>
+    <div class="border border-gray-200 p-2"><dt>Name</dt><dd>{{user.firstName}} {{user.lastName}}</dd></div>
+  </dl>
+</section>
 `;
 
 const isSafeRedirectPath = (value: string | undefined): value is string => {

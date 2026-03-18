@@ -9,7 +9,7 @@ import { buildInstructionFields, toFieldLabel } from '../utils/view-models';
 
 export const registerInstructionRoutes = (app: Hono): void => {
 	app.get('/:collection/instructions', requireAuth, async (c) => {
-		const collection = c.req.param('collection');
+		const collection = c.req.param('collection') ?? '';
 		const authUser = c.get('authUser');
 
 		try {

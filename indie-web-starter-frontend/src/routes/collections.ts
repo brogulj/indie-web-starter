@@ -10,6 +10,18 @@ import { buildFieldView } from '../utils/view-models';
 
 type CollectionRouteOptions = {
 	renderMarkdown: (value: string) => string;
+	renderInlineMarkdown: (value: string) => string;
+};
+
+const renderTitleMarkdown = (value: string, options: CollectionRouteOptions): string => {
+	const inlineHtml = options.renderInlineMarkdown(value).trim();
+	if (inlineHtml !== value.trim()) {
+		return inlineHtml;
+	}
+
+	const blockHtml = options.renderMarkdown(value).trim();
+	const paragraphMatch = blockHtml.match(/^<p>([\s\S]*)<\/p>$/i);
+	return paragraphMatch ? paragraphMatch[1] : blockHtml;
 };
 
 const isNotFoundError = (error: unknown): boolean => {
@@ -39,21 +51,29 @@ export const registerCollectionRoutes = (app: Hono, options: CollectionRouteOpti
 			}
 
 			const renderedData = await sonicRenderRichTextFields(collection, content.data, options.renderMarkdown);
+			const dataWithRenderedTitle = { ...renderedData } as Record<string, unknown>;
+			const rawDataTitle = typeof dataWithRenderedTitle.title === 'string' ? dataWithRenderedTitle.title : undefined;
+			const rawRootTitle = typeof content.title === 'string' ? content.title : undefined;
+			const rawTitle = rawDataTitle ?? rawRootTitle;
+			if (rawTitle && !dataWithRenderedTitle.titleHtml) {
+				dataWithRenderedTitle.titleHtml = renderTitleMarkdown(rawTitle, options);
+			}
 			const [baseCollections, requiredCollections, template] = await Promise.all([
 				resolveBaseCollections(),
 				resolveCollectionItemCollections(collection),
 				Promise.resolve(collectionTemplates[collection] ?? collectionContentTemplate),
 			]);
 			const mergedCollections = mergeCollectionContentMaps(baseCollections, requiredCollections);
-			const fields = buildFieldView(renderedData);
+			const fields = buildFieldView(dataWithRenderedTitle);
 
 			return c.html(
 				render(template, {
 					...content,
 					title: content.title || `${collection}: ${slug}`,
+					titleHtml: rawTitle ? renderTitleMarkdown(rawTitle, options) : undefined,
 					collection,
 					slug,
-					data: renderedData,
+					data: dataWithRenderedTitle,
 					fields,
 					collections: mergedCollections,
 					...auth,

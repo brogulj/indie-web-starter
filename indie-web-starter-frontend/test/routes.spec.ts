@@ -94,4 +94,60 @@ describe('routes', () => {
 			'Warning: "about" matches both a page and a collection archive. Showing page template.'
 		);
 	});
+
+	it('renders markdown formatting in collection titles', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [
+								{
+									id: '1',
+									name: 'blog-posts',
+									display_name: 'Blog Posts',
+									schema: { properties: {} },
+								},
+							],
+						})
+					);
+				}
+				if (url.includes('/api/collections/blog-posts/content') && url.includes('where=')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'post-1',
+									title: '**Hello** World',
+									slug: 'hello-world',
+									status: 'published',
+									collectionId: 'blog-posts',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-01T00:00:00.000Z',
+									data: {
+										title: '**Hello** World',
+										excerpt: 'Excerpt',
+										content: 'Body',
+									},
+								},
+							],
+						})
+					);
+				}
+				if (url.includes('/api/collections/blog-posts/content')) {
+					return Promise.resolve(jsonResponse({ data: [] }));
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			})
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/blog-posts/hello-world');
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('<strong>Hello</strong> World');
+	});
 });

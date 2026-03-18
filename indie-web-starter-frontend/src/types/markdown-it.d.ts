@@ -8,5 +8,6 @@ declare module 'markdown-it' {
 	export default class MarkdownIt {
 		constructor(options?: MarkdownItOptions);
 		render(src: string): string;
+		renderInline(src: string): string;
 	}
 }

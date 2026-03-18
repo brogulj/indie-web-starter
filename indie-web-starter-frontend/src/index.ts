@@ -16,6 +16,7 @@ registerAuthRoutes(app);
 registerInstructionRoutes(app);
 registerCollectionRoutes(app, {
 	renderMarkdown: (value) => markdown.render(value),
+	renderInlineMarkdown: (value) => markdown.renderInline(value),
 });
 registerPageRoutes(app);
 
