@@ -7,9 +7,11 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 	});
 
 describe('auth routes', () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
+		const sonic = await import('../src/utils/sonic');
+		sonic.__resetSonicCollectionsCacheForTests();
 	});
 
 	it('redirects unauthenticated users from protected dashboard', async () => {
@@ -163,5 +165,112 @@ describe('auth routes', () => {
 
 		expect(response.status).toBe(404);
 		expect(body).toContain('Logout');
+	});
+
+	it('creates content from dashboard form and redirects to the new editor page', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return jsonResponse({
+						user: {
+							id: 'u1',
+							email: 'admin@sonicjs.com',
+							username: 'admin',
+							firstName: 'Admin',
+							lastName: 'User',
+							role: 'admin',
+						},
+					});
+				}
+				if (url.endsWith('/api/content') && init?.method === 'POST') {
+					expect(init.headers).toBeDefined();
+					const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+					expect(body.collectionId).toBe('blog-posts-collection-id');
+					expect(body.status).toBe('draft');
+					return jsonResponse({
+						data: {
+							id: 'content-1',
+							collectionId: 'blog-posts-collection-id',
+							title: 'New title',
+							slug: 'new-title',
+							status: 'draft',
+							data: { title: 'New title' },
+						},
+					});
+				}
+				return new Response('not found', { status: 404 });
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const body = new FormData();
+		body.set('collectionId', 'blog-posts-collection-id');
+		body.set('title', 'New title');
+		body.set('slug', 'new-title');
+		body.set('status', 'draft');
+		body.set('dataJson', '{"title":"New title"}');
+
+		const response = await app.request('/dashboard/content', {
+			method: 'POST',
+			headers: { cookie: 'auth_token=jwt-token' },
+			body,
+		});
+
+		expect(response.status).toBe(302);
+		expect(response.headers.get('location')).toBe('/dashboard/content/content-1?saved=1');
+	});
+
+	it('updates content status to published from dashboard editor', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return jsonResponse({
+						user: {
+							id: 'u1',
+							email: 'admin@sonicjs.com',
+							username: 'admin',
+							firstName: 'Admin',
+							lastName: 'User',
+							role: 'admin',
+						},
+					});
+				}
+				if (url.endsWith('/api/content/content-1') && init?.method === 'PUT') {
+					const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+					expect(body.title).toBe('Updated title');
+					expect(body.slug).toBe('updated-title');
+					expect(body.status).toBe('published');
+					return jsonResponse({
+						id: 'content-1',
+						title: 'Updated title',
+						slug: 'updated-title',
+						status: 'published',
+						data: { title: 'Updated title' },
+					});
+				}
+				return new Response('not found', { status: 404 });
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const body = new FormData();
+		body.set('collectionId', 'blog-posts-collection-id');
+		body.set('title', 'Updated title');
+		body.set('slug', 'updated-title');
+		body.set('status', 'published');
+		body.set('dataJson', '{"title":"Updated title"}');
+
+		const response = await app.request('/dashboard/content/content-1', {
+			method: 'POST',
+			headers: { cookie: 'auth_token=jwt-token' },
+			body,
+		});
+
+		expect(response.status).toBe(302);
+		expect(response.headers.get('location')).toBe('/dashboard/content/content-1?saved=1');
 	});
 });

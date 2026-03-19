@@ -4,6 +4,7 @@ export const blogPostsTemplate = /* html */ `
     <h1 class="text-2xl font-semibold">{{{data.titleHtml}}}{{^data.titleHtml}}{{{titleHtml}}}{{^titleHtml}}{{data.title}}{{^data.title}}{{title}}{{/data.title}}{{/titleHtml}}{{/data.titleHtml}}</h1>
     <p class="mt-1 text-sm text-gray-600">/{{collection}}/{{slug}}</p>
   </header>
+  <img src="{{data.featuredImage}}" alt="{{data.title}}" class="w-full h-auto">
 
   <p class="text-sm text-gray-700">{{data.excerpt}}</p>
 

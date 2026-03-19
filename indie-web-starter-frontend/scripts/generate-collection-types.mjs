@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 const DEFAULT_ENDPOINT = 'http://localhost:8788/api/collections';
 const endpoint = process.env.COLLECTIONS_API_URL || process.argv[2] || DEFAULT_ENDPOINT;
 const outputPath = resolve(process.cwd(), 'src/types/collections.generated.d.ts');
+const runtimeOutputPath = resolve(process.cwd(), 'src/types/collection-field-kinds.generated.ts');
 const collectionTemplatesDir = resolve(process.cwd(), 'src/templates/collections');
 const collectionArchiveTemplatesDir = resolve(process.cwd(), 'src/templates/collections-archive');
 
@@ -161,6 +162,37 @@ const buildTypeFile = (collections) => {
 	return `${body.join('\n')}\n`;
 };
 
+const buildRuntimeFieldKindsFile = (collections) => {
+	const sortedCollections = [...collections].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+	const fieldKindsMap = {};
+	const requiredFieldsMap = {};
+
+	for (const collection of sortedCollections) {
+		const schema = collection?.schema && typeof collection.schema === 'object' ? collection.schema : {};
+		const properties = schema?.properties && typeof schema.properties === 'object' ? schema.properties : {};
+		const schemaRequired = Array.isArray(schema.required) ? schema.required.map(String) : [];
+		const fieldKinds = {};
+		for (const [fieldName, fieldSchema] of Object.entries(properties)) {
+			fieldKinds[fieldName] = getFieldKind(fieldSchema);
+		}
+		fieldKindsMap[collection.name] = fieldKinds;
+		requiredFieldsMap[collection.name] = schemaRequired;
+	}
+
+	const body = [
+		'/* eslint-disable */',
+		'// AUTO-GENERATED FILE. DO NOT EDIT.',
+		`// Generated from ${endpoint}`,
+		'',
+		'export const collectionFieldKindsMap = ' + JSON.stringify(fieldKindsMap, null, 2) + ' as const;',
+		'',
+		'export const collectionRequiredFieldsMap = ' + JSON.stringify(requiredFieldsMap, null, 2) + ' as const;',
+		'',
+	];
+
+	return `${body.join('\n')}\n`;
+};
+
 const fileExists = async (filePath) => {
 	try {
 		await access(filePath);
@@ -266,10 +298,13 @@ const main = async () => {
 	}
 
 	const content = buildTypeFile(collections);
+	const runtimeContent = buildRuntimeFieldKindsFile(collections);
 	await mkdir(dirname(outputPath), { recursive: true });
 	await writeFile(outputPath, content, 'utf8');
+	await writeFile(runtimeOutputPath, runtimeContent, 'utf8');
 	await ensureTemplateStubs(collections);
 	console.log(`Generated ${collections.length} collection type(s) at ${outputPath}`);
+	console.log(`Generated runtime field kinds at ${runtimeOutputPath}`);
 };
 
 main().catch((error) => {

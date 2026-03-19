@@ -28,7 +28,6 @@ export interface BlogPostsCollectionData {
 	"publishedAt"?: string;
 	"status"?: "draft" | "published" | "archived";
 	"tags"?: string;
-	"interests"?: string[];
 }
 
 export interface BlogPostsCollectionFieldKinds {
@@ -41,19 +40,20 @@ export interface BlogPostsCollectionFieldKinds {
 	"publishedAt": "datetime";
 	"status": "select";
 	"tags": "string";
-	"interests": "array";
 }
 
 export interface MusicCollectionData {
 	"title": string;
 	"content"?: RichText;
 	"status"?: "draft" | "published" | "archived";
+	"album_cover"?: string;
 }
 
 export interface MusicCollectionFieldKinds {
 	"title": "string";
 	"content": "richtext";
 	"status": "string";
+	"album_cover": "media";
 }
 
 export interface NewsCollectionData {
