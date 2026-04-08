@@ -4,6 +4,7 @@ import { requiredData as baseRequiredData } from '../templates/base';
 import { pageRequiredData } from '../templates/pages';
 import { parseRequiredDataConfig, type RequiredCollectionConfig } from '../types/required-data';
 import { sonicGetContent, type SonicCollectionContentItem } from '../utils/sonic';
+import type { BackendRequestOptions } from '../utils/backend';
 
 export type CollectionContentMap = Record<string, SonicCollectionContentItem[]>;
 
@@ -48,7 +49,7 @@ export const applyCollectionSortAndLimit = (
 	return output;
 };
 
-const resolveRequiredCollections = async (config: unknown, scope: string): Promise<CollectionContentMap> => {
+const resolveRequiredCollections = async (config: unknown, scope: string, options?: BackendRequestOptions): Promise<CollectionContentMap> => {
 	const { collections = [] } = parseRequiredDataConfig(config);
 	if (collections.length === 0) return {};
 
@@ -57,7 +58,8 @@ const resolveRequiredCollections = async (config: unknown, scope: string): Promi
 			try {
 				const items = await sonicGetContent(
 					collectionConfig.name,
-					Array.isArray(collectionConfig.filters) ? collectionConfig.filters : []
+					Array.isArray(collectionConfig.filters) ? collectionConfig.filters : [],
+					options
 				);
 				return [collectionConfig.name, applyCollectionSortAndLimit(items, collectionConfig)] as const;
 			} catch (error) {
@@ -70,20 +72,23 @@ const resolveRequiredCollections = async (config: unknown, scope: string): Promi
 	return Object.fromEntries(resolvedEntries);
 };
 
-export const resolvePageCollections = async (page: string): Promise<CollectionContentMap> => {
-	return resolveRequiredCollections(pageRequiredData[page], `page:${page}`);
+export const resolvePageCollections = async (page: string, options?: BackendRequestOptions): Promise<CollectionContentMap> => {
+	return resolveRequiredCollections(pageRequiredData[page], `page:${page}`, options);
 };
 
-export const resolveCollectionArchiveCollections = async (collection: string): Promise<CollectionContentMap> => {
-	return resolveRequiredCollections(collectionArchiveRequiredData[collection], `collection-archive:${collection}`);
+export const resolveCollectionArchiveCollections = async (
+	collection: string,
+	options?: BackendRequestOptions
+): Promise<CollectionContentMap> => {
+	return resolveRequiredCollections(collectionArchiveRequiredData[collection], `collection-archive:${collection}`, options);
 };
 
-export const resolveCollectionItemCollections = async (collection: string): Promise<CollectionContentMap> => {
-	return resolveRequiredCollections(collectionRequiredData[collection], `collection-item:${collection}`);
+export const resolveCollectionItemCollections = async (collection: string, options?: BackendRequestOptions): Promise<CollectionContentMap> => {
+	return resolveRequiredCollections(collectionRequiredData[collection], `collection-item:${collection}`, options);
 };
 
-export const resolveBaseCollections = async (): Promise<CollectionContentMap> => {
-	return resolveRequiredCollections(baseRequiredData, 'base');
+export const resolveBaseCollections = async (options?: BackendRequestOptions): Promise<CollectionContentMap> => {
+	return resolveRequiredCollections(baseRequiredData, 'base', options);
 };
 
 export const mergeCollectionContentMaps = (...maps: CollectionContentMap[]): CollectionContentMap => {

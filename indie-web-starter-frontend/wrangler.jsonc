@@ -21,11 +21,18 @@
 	},
 	"env": {
 		"production": {
+			"name": "indie-web-starter-frontend-production",
 			"vars": {
 				"ENVIRONMENT": "production",
-				"API_URL": "https://indie-web-starter.roguljbruno.workers.dev",
-				"WEBMENTION_ENDPOINT_URL": "https://indie-web-starter.roguljbruno.workers.dev/api/webmentions/ingest"
-			}
+				"API_URL": "https://indie-web-starter-backend-production.roguljbruno.workers.dev",
+				"WEBMENTION_ENDPOINT_URL": "https://indie-web-starter-backend-production.roguljbruno.workers.dev/api/webmentions/ingest"
+			},
+			"services": [
+				{
+					"binding": "API_BACKEND",
+					"service": "indie-web-starter-backend-production"
+				}
+			]
 		}
 	}
 

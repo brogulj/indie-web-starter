@@ -7,10 +7,10 @@ import { render } from '../render';
 import { resolveBaseCollections } from '../services/required-collections';
 import type { AuthUser } from '../utils/auth';
 import { AuthApiError, authGetCurrentUser, authLogin } from '../utils/auth';
-import { sonicGetCollectionsCached } from '../utils/sonic';
+import { sonicGetCollectionsCached, sonicGetContent, type CollectionFilter } from '../utils/sonic';
+import { fetchBackend, resolveBackendRequestOptions, type BackendRequestOptions } from '../utils/backend';
 
 const AUTH_COOKIE_NAME = 'auth_token';
-const API_BASE_URL = process.env.API_URL ?? 'http://localhost:8788';
 const REQUEST_TIMEOUT_MS = Number(process.env.SONIC_TIMEOUT_MS ?? '8000');
 
 type ContentStatus = 'draft' | 'published' | 'archived';
@@ -148,6 +148,12 @@ const SYSTEM_COLLECTION_NAMES = new Set([
 	'outbound-webmentions',
 	'outbound webmentions',
 ]);
+const WEBMENTION_SOURCE_READY_MAX_ATTEMPTS = Math.max(8, Number(process.env.WEBMENTION_SOURCE_READY_MAX_ATTEMPTS ?? '24'));
+const WEBMENTION_SOURCE_READY_BASE_DELAY_MS = Math.max(150, Number(process.env.WEBMENTION_SOURCE_READY_BASE_DELAY_MS ?? '300'));
+const WEBMENTION_SOURCE_READY_MAX_DELAY_MS = Math.max(
+	WEBMENTION_SOURCE_READY_BASE_DELAY_MS,
+	Number(process.env.WEBMENTION_SOURCE_READY_MAX_DELAY_MS ?? '2500')
+);
 
 class ContentApiError extends Error {
 	readonly status: number;
@@ -653,14 +659,6 @@ const clearTokenCookie = (c: Context): void => {
 	});
 };
 
-const buildApiUrl = (path: string, query?: URLSearchParams): string => {
-	const url = new URL(path, API_BASE_URL);
-	if (query) {
-		url.search = query.toString();
-	}
-	return url.toString();
-};
-
 const asObject = (value: unknown): Record<string, unknown> | null => {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
 	return value as Record<string, unknown>;
@@ -717,7 +715,7 @@ const parseContentItemResponse = (payload: unknown): DashboardContentItem | null
 	return null;
 };
 
-const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: string): Promise<T> => {
+const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: string, options?: BackendRequestOptions): Promise<T> => {
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -728,11 +726,11 @@ const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: str
 		}
 		if (token) headers.set('authorization', `Bearer ${token}`);
 
-		const response = await fetch(buildApiUrl(path), {
+		const response = await fetchBackend(path, {
 			...init,
 			headers,
 			signal: controller.signal,
-		});
+		}, options);
 
 		if (!response.ok) {
 			let message = 'Content request failed';
@@ -757,27 +755,29 @@ const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: str
 	}
 };
 
-const loadDashboardContent = async (): Promise<DashboardContentItem[]> => {
+const loadDashboardContent = async (options?: BackendRequestOptions): Promise<DashboardContentItem[]> => {
 	const params = new URLSearchParams();
 	params.set('limit', '50');
 	params.set('sort', '-updatedAt');
-	const payload = await fetchApiJson<unknown>(`/api/content?${params.toString()}`, { method: 'GET' });
+	const payload = await fetchApiJson<unknown>(`/api/content?${params.toString()}`, { method: 'GET' }, undefined, options);
 	return parseContentListResponse(payload);
 };
 
-const loadRecentOutboundWebmentions = async (): Promise<DashboardContentItem[]> => {
+const loadRecentOutboundWebmentions = async (options?: BackendRequestOptions): Promise<DashboardContentItem[]> => {
 	const params = new URLSearchParams();
 	params.set('limit', '200');
 	params.set('sort', '-updatedAt');
 	const payload = await fetchApiJson<unknown>(
 		`/api/collections/${encodeURIComponent('outbound-webmentions')}/content?${params.toString()}`,
-		{ method: 'GET' }
+		{ method: 'GET' },
+		undefined,
+		options
 	);
 	return parseContentListResponse(payload);
 };
 
-const loadCollectionTitleMap = async (): Promise<Map<string, string>> => {
-	const collections = await sonicGetCollectionsCached();
+const loadCollectionTitleMap = async (options?: BackendRequestOptions): Promise<Map<string, string>> => {
+	const collections = await sonicGetCollectionsCached(options);
 	const titleMap = new Map<string, string>();
 	for (const collection of collections) {
 		const title = collection.display_name || collection.name || collection.id;
@@ -787,8 +787,8 @@ const loadCollectionTitleMap = async (): Promise<Map<string, string>> => {
 	return titleMap;
 };
 
-const loadCollectionMetaMap = async (): Promise<Map<string, DashboardCollectionMeta>> => {
-	const collections = await sonicGetCollectionsCached();
+const loadCollectionMetaMap = async (options?: BackendRequestOptions): Promise<Map<string, DashboardCollectionMeta>> => {
+	const collections = await sonicGetCollectionsCached(options);
 	const metaMap = new Map<string, DashboardCollectionMeta>();
 	for (const collection of collections) {
 		const meta: DashboardCollectionMeta = {
@@ -943,11 +943,17 @@ const resolveEndpointFromHtml = (html: string, baseUrl: string): string => {
 	return '';
 };
 
-const discoverWebmentionEndpoint = async (targetUrl: string, timeoutMs = 6000): Promise<string> => {
+const discoverWebmentionEndpoint = async (
+	targetUrl: string,
+	timeoutMs = 6000,
+	backendOptions?: BackendRequestOptions
+): Promise<string> => {
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 	try {
-		const response = await fetch(targetUrl, {
+		const response = await fetchBackend(
+			targetUrl,
+			{
 			method: 'GET',
 			redirect: 'follow',
 			headers: {
@@ -955,7 +961,9 @@ const discoverWebmentionEndpoint = async (targetUrl: string, timeoutMs = 6000): 
 				'user-agent': 'indie-web-starter-following/1.0',
 			},
 			signal: controller.signal,
-		});
+			},
+			backendOptions
+		);
 		if (!response.ok) {
 			throw new Error(`Target fetch failed: HTTP ${response.status}`);
 		}
@@ -975,11 +983,10 @@ const discoverWebmentionEndpoint = async (targetUrl: string, timeoutMs = 6000): 
 const ensureSourcePageReadyForWebmention = async (
 	sourceUrl: string,
 	targetUrl: string,
-	timeoutMs = 6000
+	timeoutMs = 6000,
+	backendOptions?: BackendRequestOptions
 ): Promise<void> => {
-	const collectSourceAnchorDetails = (
-		html: string
-	): { matched: boolean; resolvedHrefs: string[]; rawHrefs: string[] } => {
+	const collectSourceAnchorDetails = (html: string): { matched: boolean; resolvedHrefs: string[]; rawHrefs: string[] } => {
 		const resolvedHrefs: string[] = [];
 		const rawHrefs: string[] = [];
 		let matched = false;
@@ -1000,75 +1007,81 @@ const ensureSourcePageReadyForWebmention = async (
 		return { matched, resolvedHrefs, rawHrefs };
 	};
 
-	for (let attempt = 1; attempt <= 8; attempt += 1) {
+	for (let attempt = 1; attempt <= WEBMENTION_SOURCE_READY_MAX_ATTEMPTS; attempt += 1) {
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 		try {
-			const response = await fetch(sourceUrl, {
+			const response = await fetchBackend(
+				sourceUrl,
+				{
 				method: 'GET',
 				redirect: 'follow',
-					headers: {
-						accept: 'text/html,application/xhtml+xml,*/*',
-						'user-agent': 'indie-web-starter-following/1.0',
-					},
-					signal: controller.signal,
-				});
-				if (response.ok) {
-					const html = await response.text().catch(() => '');
-					const { matched, resolvedHrefs, rawHrefs } = collectSourceAnchorDetails(html);
-					console.log('webmention source readiness check', {
-						attempt,
-						sourceUrl,
-						targetUrl,
-						responseStatus: response.status,
-						finalSourceUrl: response.url || sourceUrl,
-						matched,
-						resolvedHrefs: resolvedHrefs.slice(0, 12),
-						rawHrefs: rawHrefs.slice(0, 12),
-						htmlLength: html.length,
-						htmlSnippet: html.slice(0, 700),
-						html,
-					});
-					if (matched) {
-						return;
-					}
-				} else {
-					console.log('webmention source readiness check', {
-						attempt,
-						sourceUrl,
-						targetUrl,
-						responseStatus: response.status,
-						finalSourceUrl: response.url || sourceUrl,
-						matched: false,
-						reason: 'source fetch was not OK',
-					});
-				}
-			} catch (error) {
+				headers: {
+					accept: 'text/html,application/xhtml+xml,*/*',
+					'user-agent': 'indie-web-starter-following/1.0',
+				},
+				signal: controller.signal,
+				},
+				backendOptions
+			);
+			if (response.ok) {
+				const html = await response.text().catch(() => '');
+				const { matched, resolvedHrefs, rawHrefs } = collectSourceAnchorDetails(html);
 				console.log('webmention source readiness check', {
 					attempt,
 					sourceUrl,
 					targetUrl,
-					matched: false,
-					reason: 'source fetch threw',
-					error: error instanceof Error ? error.message : String(error),
+					responseStatus: response.status,
+					finalSourceUrl: response.url || sourceUrl,
+					matched,
+					resolvedHrefs: resolvedHrefs.slice(0, 12),
+					rawHrefs: rawHrefs.slice(0, 12),
+					htmlLength: html.length,
+					htmlSnippet: html.slice(0, 700),
+					html,
 				});
-			} finally {
-				clearTimeout(timeoutId);
+				if (matched) {
+					return;
+				}
+			} else {
+				console.log('webmention source readiness check', {
+					attempt,
+					sourceUrl,
+					targetUrl,
+					responseStatus: response.status,
+					finalSourceUrl: response.url || sourceUrl,
+					matched: false,
+					reason: 'source fetch was not OK',
+				});
 			}
-			if (attempt < 8) {
-				await new Promise((resolve) => setTimeout(resolve, attempt * 300));
-			}
+		} catch (error) {
+			console.log('webmention source readiness check', {
+				attempt,
+				sourceUrl,
+				targetUrl,
+				matched: false,
+				reason: 'source fetch threw',
+				error: error instanceof Error ? error.message : String(error),
+			});
+		} finally {
+			clearTimeout(timeoutId);
 		}
-		throw new Error('Source page is not ready yet (target link not visible).');
+		if (attempt < WEBMENTION_SOURCE_READY_MAX_ATTEMPTS) {
+			const delayMs = Math.min(WEBMENTION_SOURCE_READY_MAX_DELAY_MS, attempt * WEBMENTION_SOURCE_READY_BASE_DELAY_MS);
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+		}
+	}
+	throw new Error('Source page is not ready yet (target link not visible).');
 };
 
 const sendWebmentionNotification = async (
 	sourceUrl: string,
 	targetUrl: string,
-	timeoutMs = 6000
+	timeoutMs = 6000,
+	backendOptions?: BackendRequestOptions
 ): Promise<{ endpointUrl: string; responseStatusCode: number }> => {
-	await ensureSourcePageReadyForWebmention(sourceUrl, targetUrl, timeoutMs);
-	const endpoint = await discoverWebmentionEndpoint(targetUrl, timeoutMs);
+	await ensureSourcePageReadyForWebmention(sourceUrl, targetUrl, timeoutMs, backendOptions);
+	const endpoint = await discoverWebmentionEndpoint(targetUrl, timeoutMs, backendOptions);
 	const body = new URLSearchParams();
 	body.set('source', sourceUrl);
 	body.set('target', targetUrl);
@@ -1077,7 +1090,9 @@ const sendWebmentionNotification = async (
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 		try {
-			const response = await fetch(endpoint, {
+			const response = await fetchBackend(
+				endpoint,
+				{
 				method: 'POST',
 				redirect: 'follow',
 				headers: {
@@ -1087,15 +1102,16 @@ const sendWebmentionNotification = async (
 				},
 				body: body.toString(),
 				signal: controller.signal,
-			});
+				},
+				backendOptions
+			);
 			if (response.ok) {
 				return { endpointUrl: endpoint, responseStatusCode: response.status };
 			}
 
 			const errorBody = await response.text().catch(() => '');
 			const snippet = errorBody.slice(0, 300).trim();
-			const isPropagationRace =
-				response.status === 422 && /source does not link to target\.?/i.test(snippet);
+			const isPropagationRace = response.status === 422 && /source does not link to target\.?/i.test(snippet);
 			if (isPropagationRace && attempt < 3) {
 				await new Promise((resolve) => setTimeout(resolve, attempt * 250));
 				continue;
@@ -1581,6 +1597,14 @@ const toDisplayHost = (url: string): string => {
 	}
 };
 
+const toHost = (url: string): string => {
+	try {
+		return new URL(url).hostname.toLowerCase();
+	} catch {
+		return '';
+	}
+};
+
 const toDisplayHostUrl = (url: string): string => {
 	try {
 		return new URL(url).origin;
@@ -1632,6 +1656,62 @@ const toDisplayDate = (value: string): string => {
 
 const toDisplayDateTime = (value: string): string => {
 	return toRelativeTime(value);
+};
+
+const loadLocalFollowingFeedItems = async (
+	source: FollowingSourceItem,
+	options?: { currentOrigin?: string; backendOptions?: BackendRequestOptions }
+): Promise<FollowingFeedItem[]> => {
+	const currentOrigin = options?.currentOrigin;
+	if (!currentOrigin) return [];
+	const sourceHost = toHost(source.siteUrl || source.feedUrl || '');
+	const currentHost = toHost(currentOrigin);
+	if (!sourceHost || !currentHost || sourceHost !== currentHost) return [];
+
+	const statusFilter: CollectionFilter[] = [{ field: 'status', operator: 'equals', value: 'published' }];
+	const collections = (await sonicGetCollectionsCached(options?.backendOptions)).filter(
+		(collection) => !SYSTEM_COLLECTION_NAMES.has(String(collection.name || '').trim().toLowerCase())
+	);
+	const itemsByCollection = await Promise.all(
+		collections.map(async (collection) => {
+			try {
+				const items = await sonicGetContent(collection.name, statusFilter, options?.backendOptions);
+				return items.map((item) => {
+					const dataObject = item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : {};
+					const title =
+						(typeof dataObject.title === 'string' && dataObject.title.trim()) ||
+						item.title ||
+						`${collection.display_name || collection.name}: ${item.slug}`;
+					const summarySource =
+						(typeof dataObject.summary === 'string' && dataObject.summary) ||
+						(typeof dataObject.excerpt === 'string' && dataObject.excerpt) ||
+						(typeof dataObject.caption === 'string' && dataObject.caption) ||
+						(typeof dataObject.contentText === 'string' && dataObject.contentText) ||
+						(typeof dataObject.content === 'string' ? stripTags(dataObject.content) : '');
+					const publishedAt =
+						(typeof dataObject.publishedAt === 'string' && dataObject.publishedAt) ||
+						(typeof dataObject.createdAt === 'string' && dataObject.createdAt) ||
+						item.updatedAt ||
+						item.createdAt ||
+						'';
+					return {
+						sourceTitle: source.title,
+						title: String(title),
+						url: `${currentOrigin}/${encodeURIComponent(collection.name)}/${encodeURIComponent(item.slug)}`,
+						publishedAt,
+						summary: String(summarySource).slice(0, 300),
+					} satisfies FollowingFeedItem;
+				});
+			} catch {
+				return [] as FollowingFeedItem[];
+			}
+		})
+	);
+
+	return itemsByCollection
+		.flat()
+		.sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')))
+		.slice(0, 8);
 };
 
 const getMetaContent = (doc: DomDocumentLike, attrs: Array<{ name?: string; property?: string }>): string => {
@@ -1821,9 +1901,7 @@ const mapFollowingFeedItemsForDisplay = (
 			text: entry.text,
 			displayDate: toDisplayDateTime(entry.attemptedAt),
 		}));
-		const ownCommentTexts = new Set(
-			previousComments.map((entry) => entry.text.trim().toLowerCase()).filter((entry) => entry.length > 0)
-		);
+		const ownCommentTexts = new Set(previousComments.map((entry) => entry.text.trim().toLowerCase()).filter((entry) => entry.length > 0));
 		const inboundReplies = (
 			inboundRepliesByTarget.get(normalizedTarget) ||
 			inboundRepliesByTarget.get(normalizedTargetNoQuery) ||
@@ -1864,9 +1942,18 @@ const mapFollowingFeedItemsForDisplay = (
 		};
 	});
 
-const loadFollowingFeedItems = async (sources: FollowingSourceItem[]): Promise<FollowingFeedItem[]> => {
+const loadFollowingFeedItems = async (
+	sources: FollowingSourceItem[],
+	options?: { currentOrigin?: string; backendOptions?: BackendRequestOptions }
+): Promise<FollowingFeedItem[]> => {
 	const output: FollowingFeedItem[] = [];
 	for (const source of sources.slice(0, 12)) {
+		const localItems = await loadLocalFollowingFeedItems(source, options).catch(() => []);
+		if (localItems.length > 0) {
+			output.push(...localItems);
+			continue;
+		}
+
 		const resolvedFeedUrl = source.feedUrl || (await discoverFeedUrl(source.siteUrl)) || '';
 		const fetchTargets = [resolvedFeedUrl, source.siteUrl].filter(Boolean);
 
@@ -2018,18 +2105,18 @@ const resolveOutboundWebmentions = (
 			}
 			continue;
 		}
-			if (mentionType === 'reply' && commentText) {
-				if (!existing.commentHistory) existing.commentHistory = [];
-				existing.commentHistory.push({
-					text: commentText,
-					attemptedAt: typeof item.data.attemptedAt === 'string' ? item.data.attemptedAt : item.updatedAt,
-				});
-				if (!existing.commentText) existing.commentText = commentText;
-			}
-			if (mentionType === 'like' && deliveryStatus === 'sent') {
-				existing.hasSuccessfulLike = true;
-			}
+		if (mentionType === 'reply' && commentText) {
+			if (!existing.commentHistory) existing.commentHistory = [];
+			existing.commentHistory.push({
+				text: commentText,
+				attemptedAt: typeof item.data.attemptedAt === 'string' ? item.data.attemptedAt : item.updatedAt,
+			});
+			if (!existing.commentText) existing.commentText = commentText;
 		}
+		if (mentionType === 'like' && deliveryStatus === 'sent') {
+			existing.hasSuccessfulLike = true;
+		}
+	}
 
 	return result;
 };
@@ -2043,7 +2130,9 @@ const resolveInboundRepliesByTarget = (
 	if (!webmentionsMeta) return result;
 
 	const candidates = items
-		.filter((item) => (item.collectionId === webmentionsMeta.id || item.collectionId === webmentionsMeta.name) && item.status === 'published')
+		.filter(
+			(item) => (item.collectionId === webmentionsMeta.id || item.collectionId === webmentionsMeta.name) && item.status === 'published'
+		)
 		.sort((a, b) => String(a.updatedAt).localeCompare(String(b.updatedAt)));
 
 	for (const item of candidates) {
@@ -2094,11 +2183,7 @@ const resolveInboundRepliesByTarget = (
 	for (const [target, replies] of result.entries()) {
 		const seen = new Set<string>();
 		const deduped = replies.filter((reply) => {
-			const signature = [
-				reply.authorName.trim().toLowerCase(),
-				reply.contentText.trim(),
-				reply.publishedAt.trim(),
-			].join('|');
+			const signature = [reply.authorName.trim().toLowerCase(), reply.contentText.trim(), reply.publishedAt.trim()].join('|');
 			if (seen.has(signature)) return false;
 			seen.add(signature);
 			return true;
@@ -2125,7 +2210,8 @@ const createOutboundWebmentionRecord = async (
 		errorMessage?: string;
 		commentText?: string;
 		mf2PropertyClass?: string;
-	}
+	},
+	options?: BackendRequestOptions
 ): Promise<{ outboundId?: string; outboundUrl?: string }> => {
 	const outboundMeta = findCollectionByName(collectionMetaMap, 'outbound-webmentions');
 	if (!outboundMeta) throw new ContentApiError('Outbound webmentions collection is not available.', 500);
@@ -2174,7 +2260,8 @@ const createOutboundWebmentionRecord = async (
 				},
 			}),
 		},
-		token
+		token,
+		options
 	);
 	const created = parseContentItemResponse(payload);
 	if (!created?.slug || !created.id) return {};
@@ -2184,8 +2271,13 @@ const createOutboundWebmentionRecord = async (
 	};
 };
 
-const updateOutboundWebmentionRecord = async (token: string, outboundId: string, patch: Record<string, unknown>): Promise<void> => {
-	const payload = await fetchApiJson<unknown>(`/api/content/${outboundId}`, { method: 'GET' }, token);
+const updateOutboundWebmentionRecord = async (
+	token: string,
+	outboundId: string,
+	patch: Record<string, unknown>,
+	options?: BackendRequestOptions
+): Promise<void> => {
+	const payload = await fetchApiJson<unknown>(`/api/content/${outboundId}`, { method: 'GET' }, token, options);
 	const item = parseContentItemResponse(payload);
 	if (!item) throw new ContentApiError('Outbound webmention not found.', 404);
 
@@ -2204,7 +2296,8 @@ const updateOutboundWebmentionRecord = async (token: string, outboundId: string,
 				},
 			}),
 		},
-		token
+		token,
+		options
 	);
 };
 
@@ -2215,7 +2308,8 @@ const findCollectionByName = (metaMap: Map<string, DashboardCollectionMeta>, nam
 const upsertTrustedDomainRecord = async (
 	token: string,
 	metaMap: Map<string, DashboardCollectionMeta>,
-	sourceDomain: string
+	sourceDomain: string,
+	options?: BackendRequestOptions
 ): Promise<void> => {
 	const trustedCollection = findCollectionByName(metaMap, 'trusted-webmention-domains');
 	if (!trustedCollection) return;
@@ -2223,7 +2317,7 @@ const upsertTrustedDomainRecord = async (
 	const params = new URLSearchParams();
 	params.set('limit', '100');
 	params.set('sort', '-updatedAt');
-	const listPayload = await fetchApiJson<unknown>(`/api/content?${params.toString()}`, { method: 'GET' }, token);
+	const listPayload = await fetchApiJson<unknown>(`/api/content?${params.toString()}`, { method: 'GET' }, token, options);
 	const allItems = parseContentListResponse(listPayload).filter(
 		(item) => item.collectionId === trustedCollection.id || item.collectionId === trustedCollection.name
 	);
@@ -2252,7 +2346,8 @@ const upsertTrustedDomainRecord = async (
 					data: nextData,
 				}),
 			},
-			token
+			token,
+			options
 		);
 		return;
 	}
@@ -2275,7 +2370,8 @@ const upsertTrustedDomainRecord = async (
 				},
 			}),
 		},
-		token
+		token,
+		options
 	);
 };
 
@@ -2283,14 +2379,15 @@ const approveWebmentionById = async (
 	token: string,
 	collectionMetaMap: Map<string, DashboardCollectionMeta>,
 	id: string,
-	trustDomain: boolean
+	trustDomain: boolean,
+	options?: BackendRequestOptions
 ): Promise<void> => {
 	const webmentionsCollection = findCollectionByName(collectionMetaMap, 'webmentions');
 	if (!webmentionsCollection) {
 		throw new ContentApiError('Webmentions collection is not available.', 500);
 	}
 
-	const payload = await fetchApiJson<unknown>(`/api/content/${id}`, { method: 'GET' }, token);
+	const payload = await fetchApiJson<unknown>(`/api/content/${id}`, { method: 'GET' }, token, options);
 	const item = parseContentItemResponse(payload);
 	if (!item) {
 		throw new ContentApiError('Webmention item not found.', 404);
@@ -2317,19 +2414,21 @@ const approveWebmentionById = async (
 				data: nextData,
 			}),
 		},
-		token
+		token,
+		options
 	);
 
 	if (!trustDomain) return;
 	const sourceDomain = typeof item.data.sourceDomain === 'string' ? item.data.sourceDomain.trim() : '';
 	if (!sourceDomain) return;
-	await upsertTrustedDomainRecord(token, collectionMetaMap, sourceDomain);
+	await upsertTrustedDomainRecord(token, collectionMetaMap, sourceDomain, options);
 };
 
 const createFollowingSource = async (
 	token: string,
 	collectionMetaMap: Map<string, DashboardCollectionMeta>,
-	input: { siteUrl: string; feedUrl?: string; title?: string }
+	input: { siteUrl: string; feedUrl?: string; title?: string },
+	options?: BackendRequestOptions
 ): Promise<void> => {
 	const followsCollection = findCollectionByName(collectionMetaMap, 'following-sources');
 	if (!followsCollection) {
@@ -2359,17 +2458,23 @@ const createFollowingSource = async (
 				},
 			}),
 		},
-		token
+		token,
+		options
 	);
 };
 
-const removeFollowingSource = async (token: string, collectionMetaMap: Map<string, DashboardCollectionMeta>, id: string): Promise<void> => {
+const removeFollowingSource = async (
+	token: string,
+	collectionMetaMap: Map<string, DashboardCollectionMeta>,
+	id: string,
+	options?: BackendRequestOptions
+): Promise<void> => {
 	const followsCollection = findCollectionByName(collectionMetaMap, 'following-sources');
 	if (!followsCollection) {
 		throw new ContentApiError('Following sources collection is not available.', 500);
 	}
 
-	const payload = await fetchApiJson<unknown>(`/api/content/${id}`, { method: 'GET' }, token);
+	const payload = await fetchApiJson<unknown>(`/api/content/${id}`, { method: 'GET' }, token, options);
 	const item = parseContentItemResponse(payload);
 	if (!item) {
 		throw new ContentApiError('Following source not found.', 404);
@@ -2396,7 +2501,8 @@ const removeFollowingSource = async (token: string, collectionMetaMap: Map<strin
 				data: nextData,
 			}),
 		},
-		token
+		token,
+		options
 	);
 };
 
@@ -2458,7 +2564,11 @@ export const resolveAuthState = async (c: Context): Promise<AuthViewData> => {
 	}
 
 	try {
-		const user = await authGetCurrentUser(token);
+		const backendOptions = resolveBackendRequestOptions(c);
+		const user = await authGetCurrentUser(token, {
+			apiBaseUrl: backendOptions.apiBaseUrl,
+			backendService: backendOptions.backendService,
+		});
 		c.set('authUser', user);
 		c.set('isAuthenticated', true);
 		return { isAuthenticated: true, authUser: user };
@@ -2490,7 +2600,8 @@ export const registerAuthRoutes = (app: Hono): void => {
 
 		const errorFromQuery = c.req.query('error');
 		const redirectTarget = getRedirectTarget(c);
-		const baseCollections = await resolveBaseCollections();
+		const backendOptions = resolveBackendRequestOptions(c);
+		const baseCollections = await resolveBaseCollections(backendOptions);
 		return c.html(
 			render(loginTemplate, {
 				title: 'Login',
@@ -2509,7 +2620,8 @@ export const registerAuthRoutes = (app: Hono): void => {
 		const password = String(formData.get('password') ?? '');
 
 		if (!email || !password) {
-			const baseCollections = await resolveBaseCollections();
+			const backendOptions = resolveBackendRequestOptions(c);
+			const baseCollections = await resolveBaseCollections(backendOptions);
 			return c.html(
 				render(loginTemplate, {
 					title: 'Login',
@@ -2523,12 +2635,18 @@ export const registerAuthRoutes = (app: Hono): void => {
 		}
 
 		try {
-			const { token } = await authLogin(email, password);
+			const backendOptions = resolveBackendRequestOptions(c);
+			const { token } = await authLogin(email, password, {
+				apiBaseUrl: backendOptions.apiBaseUrl,
+				backendService: backendOptions.backendService,
+			});
 			setTokenCookie(c, token);
 			return c.redirect(redirectTarget);
 		} catch (error) {
 			const authError = error instanceof AuthApiError ? error.message : 'Login failed';
-			const baseCollections = await resolveBaseCollections();
+
+			const backendOptions = resolveBackendRequestOptions(c);
+			const baseCollections = await resolveBaseCollections(backendOptions);
 			return c.html(
 				render(loginTemplate, {
 					title: 'Login',

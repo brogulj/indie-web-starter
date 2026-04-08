@@ -1,4 +1,5 @@
 import type { CollectionDataMap, CollectionName } from '../types/collections.generated';
+import { buildBackendUrl, fetchBackend, type BackendRequestOptions } from './backend';
 
 type CollectionStatus = 'draft' | 'published' | 'archived';
 
@@ -58,7 +59,6 @@ type GetCollectionsResponse = {
 	data?: SonicCollection[];
 };
 
-const API_BASE_URL = process.env.API_URL ?? 'http://localhost:8788';
 const REQUEST_TIMEOUT_MS = Number(process.env.SONIC_TIMEOUT_MS ?? '8000');
 let collectionsCache: Promise<SonicCollection[]> | null = null;
 
@@ -74,20 +74,20 @@ export class SonicApiError extends Error {
 	}
 }
 
-const buildSonicUrl = (path: string, params?: URLSearchParams): string => {
-	const url = new URL(path, API_BASE_URL);
+const buildSonicUrl = (path: string, params?: URLSearchParams, options?: BackendRequestOptions): string => {
+	const url = new URL(buildBackendUrl(path, options));
 	if (params) {
 		url.search = params.toString();
 	}
 	return url.toString();
 };
 
-const fetchJson = async <T>(url: string): Promise<T> => {
+const fetchJson = async <T>(url: string, options?: BackendRequestOptions): Promise<T> => {
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
 	try {
-		const response = await fetch(url, { signal: controller.signal });
+		const response = await fetchBackend(url, { signal: controller.signal }, options);
 		if (!response.ok) {
 			throw new SonicApiError(`Sonic request failed (${response.status}): ${response.statusText}`, response.status, url);
 		}
@@ -113,8 +113,8 @@ const normalizeContentResponse = <K extends string>(response: GetCollectionConte
 	return Array.isArray(response.data) ? response.data : [];
 };
 
-const resolveCollectionApiIdentifiers = async (collection: string): Promise<string[]> => {
-	const collections = await sonicGetCollectionsCached();
+const resolveCollectionApiIdentifiers = async (collection: string, options?: BackendRequestOptions): Promise<string[]> => {
+	const collections = await sonicGetCollectionsCached(options);
 	const match = collections.find((item) => item.id === collection || item.name === collection);
 	const candidates = [collection];
 	if (match?.id && match.id !== collection) {
@@ -126,7 +126,8 @@ const resolveCollectionApiIdentifiers = async (collection: string): Promise<stri
 export const sonicGetContentBySlug = async <K extends string>(
 	collection: K,
 	slug: string,
-	filters: CollectionFilter[] = []
+	filters: CollectionFilter[] = [],
+	options?: BackendRequestOptions
 ): Promise<SonicCollectionContentItem<K> | null> => {
 	const where: CollectionWhere = {
 		and: [{ field: 'slug', operator: 'equals', value: slug }, { field: 'status', operator: 'not_equals', value: 'draft' }, ...filters],
@@ -134,13 +135,13 @@ export const sonicGetContentBySlug = async <K extends string>(
 
 	const params = new URLSearchParams();
 	params.set('where', JSON.stringify(where));
-	const collectionIdentifiers = await resolveCollectionApiIdentifiers(collection);
+	const collectionIdentifiers = await resolveCollectionApiIdentifiers(collection, options);
 	let firstSuccessfulItems: SonicCollectionContentItem<K>[] | null = null;
 
 	for (const collectionIdentifier of collectionIdentifiers) {
-		const url = buildSonicUrl(`/api/collections/${collectionIdentifier}/content`, params);
+		const url = buildSonicUrl(`/api/collections/${collectionIdentifier}/content`, params, options);
 		try {
-			const content = await fetchJson<GetCollectionContentResponse<K>>(url);
+			const content = await fetchJson<GetCollectionContentResponse<K>>(url, options);
 			const items = normalizeContentResponse(content);
 			if (items.length > 0) return items[0];
 			if (!firstSuccessfulItems) firstSuccessfulItems = items;
@@ -155,20 +156,21 @@ export const sonicGetContentBySlug = async <K extends string>(
 
 export const sonicGetContent = async <K extends string>(
 	collection: K,
-	filters: CollectionFilter[] = []
+	filters: CollectionFilter[] = [],
+	options?: BackendRequestOptions
 ): Promise<SonicCollectionContentItem<K>[]> => {
 	const params = new URLSearchParams();
 	if (filters.length > 0) {
 		params.set('where', JSON.stringify({ and: filters }));
 	}
 
-	const collectionIdentifiers = await resolveCollectionApiIdentifiers(collection);
+	const collectionIdentifiers = await resolveCollectionApiIdentifiers(collection, options);
 	let firstSuccessfulItems: SonicCollectionContentItem<K>[] | null = null;
 
 	for (const collectionIdentifier of collectionIdentifiers) {
-		const url = buildSonicUrl(`/api/collections/${collectionIdentifier}/content`, params);
+		const url = buildSonicUrl(`/api/collections/${collectionIdentifier}/content`, params, options);
 		try {
-			const content = await fetchJson<GetCollectionContentResponse<K>>(url);
+			const content = await fetchJson<GetCollectionContentResponse<K>>(url, options);
 			const items = normalizeContentResponse(content);
 			if (items.length > 0) return items;
 			if (!firstSuccessfulItems) firstSuccessfulItems = items;
@@ -181,15 +183,18 @@ export const sonicGetContent = async <K extends string>(
 	return firstSuccessfulItems ?? [];
 };
 
-export const sonicGetCollections = async (): Promise<SonicCollection[]> => {
-	const url = buildSonicUrl('/api/collections');
-	const response = await fetchJson<GetCollectionsResponse>(url);
+export const sonicGetCollections = async (options?: BackendRequestOptions): Promise<SonicCollection[]> => {
+	const url = buildSonicUrl('/api/collections', undefined, options);
+	const response = await fetchJson<GetCollectionsResponse>(url, options);
 	return normalizeCollectionsResponse(response);
 };
 
-export const sonicGetCollectionsCached = async (): Promise<SonicCollection[]> => {
+export const sonicGetCollectionsCached = async (options?: BackendRequestOptions): Promise<SonicCollection[]> => {
+	if (options?.backendService) {
+		return sonicGetCollections(options);
+	}
 	if (!collectionsCache) {
-		collectionsCache = sonicGetCollections().catch((error) => {
+		collectionsCache = sonicGetCollections(options).catch((error) => {
 			collectionsCache = null;
 			throw error;
 		});
@@ -204,8 +209,8 @@ const isRichTextField = (field: { type?: string; format?: string } | undefined):
 	return fieldType === 'richtext' || (fieldType === 'string' && fieldFormat === 'richtext');
 };
 
-const getCollectionRichTextFields = async (collection: string): Promise<string[]> => {
-	const collections = await sonicGetCollectionsCached();
+const getCollectionRichTextFields = async (collection: string, options?: BackendRequestOptions): Promise<string[]> => {
+	const collections = await sonicGetCollectionsCached(options);
 	const collectionDef = collections.find((item) => item.name === collection);
 	if (!collectionDef?.schema?.properties) return [];
 	return Object.entries(collectionDef.schema.properties)
@@ -216,9 +221,10 @@ const getCollectionRichTextFields = async (collection: string): Promise<string[]
 export const sonicRenderRichTextFields = async <K extends string>(
 	collection: K,
 	data: CollectionDataFor<K>,
-	renderMarkdown: (value: string) => string
+	renderMarkdown: (value: string) => string,
+	options?: BackendRequestOptions
 ): Promise<CollectionDataFor<K> & Record<string, unknown>> => {
-	const richTextFields = await getCollectionRichTextFields(collection);
+	const richTextFields = await getCollectionRichTextFields(collection, options);
 	if (richTextFields.length === 0) {
 		return data as CollectionDataFor<K> & Record<string, unknown>;
 	}

@@ -6,6 +6,7 @@ import { collectionContentTemplate } from '../templates/collection-content';
 import { collectionTemplates } from '../templates/collections';
 import { notFoundTemplate } from '../templates/not-found';
 import { SonicApiError, sonicGetCollections, sonicGetContentBySlug, sonicRenderRichTextFields } from '../utils/sonic';
+import { resolveBackendRequestOptions } from '../utils/backend';
 import { buildFieldView } from '../utils/view-models';
 import { getApprovedWebmentions } from '../utils/webmentions';
 
@@ -41,7 +42,8 @@ const toHost = (urlValue: string | undefined): string => {
 export const registerCollectionRoutes = (app: Hono, options: CollectionRouteOptions): void => {
 	app.get('/api/collections', async (c) => {
 		try {
-			const collections = await sonicGetCollections();
+			const backendOptions = resolveBackendRequestOptions(c);
+			const collections = await sonicGetCollections(backendOptions);
 			return c.json({ collections });
 		} catch (error) {
 			console.error(error);
@@ -56,14 +58,15 @@ export const registerCollectionRoutes = (app: Hono, options: CollectionRouteOpti
 			return c.redirect(`/${encodeURIComponent(collection)}`, 301);
 		}
 		const auth = await resolveAuthState(c);
+		const backendOptions = resolveBackendRequestOptions(c);
 
 		try {
-			const content = await sonicGetContentBySlug(collection, slug);
+			const content = await sonicGetContentBySlug(collection, slug, [], backendOptions);
 			if (!content) {
 				return c.html(render(notFoundTemplate, { title: '404' }), 404);
 			}
 
-			const renderedData = await sonicRenderRichTextFields(collection, content.data, options.renderMarkdown);
+			const renderedData = await sonicRenderRichTextFields(collection, content.data, options.renderMarkdown, backendOptions);
 			const dataWithRenderedTitle = { ...renderedData } as Record<string, unknown>;
 			const rawDataTitle = typeof dataWithRenderedTitle.title === 'string' ? dataWithRenderedTitle.title : undefined;
 			const rawRootTitle = typeof content.title === 'string' ? content.title : undefined;
@@ -73,10 +76,10 @@ export const registerCollectionRoutes = (app: Hono, options: CollectionRouteOpti
 			}
 			const canonicalUrl = new URL(`/${encodeURIComponent(collection)}/${encodeURIComponent(slug)}`, c.req.url).toString();
 			const [baseCollections, requiredCollections, template, webmentionData] = await Promise.all([
-				resolveBaseCollections(),
-				resolveCollectionItemCollections(collection),
+				resolveBaseCollections(backendOptions),
+				resolveCollectionItemCollections(collection, backendOptions),
 				Promise.resolve(collectionTemplates[collection] ?? collectionContentTemplate),
-				getApprovedWebmentions(canonicalUrl),
+				getApprovedWebmentions(canonicalUrl, backendOptions),
 			]);
 			const mergedCollections = mergeCollectionContentMaps(baseCollections, requiredCollections);
 			const fields = buildFieldView(dataWithRenderedTitle);

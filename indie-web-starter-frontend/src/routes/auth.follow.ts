@@ -1,14 +1,16 @@
 import type { Hono } from 'hono';
 import type { AuthUser } from '../utils/auth';
+import { resolveBackendRequestOptions } from '../utils/backend';
 import type { FollowAuthDeps } from './auth.shared';
 
 export const registerFollowAuthRoutes = (app: Hono, deps: FollowAuthDeps): void => {
 	app.get('/dashboard/following', deps.requireAuth, (c) => {
 		const user = c.get('authUser') as AuthUser;
+		const backendOptions = resolveBackendRequestOptions(c);
 		return Promise.all([
-			deps.resolveBaseCollections(),
-			deps.loadDashboardContent().catch(() => []),
-			deps.loadCollectionMetaMap().catch(() => new Map()),
+			deps.resolveBaseCollections(backendOptions),
+			deps.loadDashboardContent(backendOptions).catch(() => []),
+			deps.loadCollectionMetaMap(backendOptions).catch(() => new Map()),
 		]).then(async ([baseCollections, items, collectionMetaMap]) => {
 			const followingSources = deps.resolveFollowingSources(items, collectionMetaMap);
 			const followingActionSuccess =
@@ -44,8 +46,9 @@ export const registerFollowAuthRoutes = (app: Hono, deps: FollowAuthDeps): void 
 			if (!siteUrl) {
 				return c.redirect('/dashboard/following');
 			}
-			const metaMap = await deps.loadCollectionMetaMap();
-			await deps.createFollowingSource(token, metaMap, { siteUrl, feedUrl: feedUrl || undefined, title: title || undefined });
+			const backendOptions = resolveBackendRequestOptions(c);
+			const metaMap = await deps.loadCollectionMetaMap(backendOptions);
+			await deps.createFollowingSource(token, metaMap, { siteUrl, feedUrl: feedUrl || undefined, title: title || undefined }, backendOptions);
 			return c.redirect('/dashboard/following?followSaved=1');
 		} catch (error) {
 			console.error(error);
@@ -60,8 +63,9 @@ export const registerFollowAuthRoutes = (app: Hono, deps: FollowAuthDeps): void 
 		if (!id) return c.redirect('/dashboard/following');
 
 		try {
-			const metaMap = await deps.loadCollectionMetaMap();
-			await deps.removeFollowingSource(token, metaMap, id);
+			const backendOptions = resolveBackendRequestOptions(c);
+			const metaMap = await deps.loadCollectionMetaMap(backendOptions);
+			await deps.removeFollowingSource(token, metaMap, id, backendOptions);
 			return c.redirect('/dashboard/following?followRemoved=1');
 		} catch (error) {
 			console.error(error);

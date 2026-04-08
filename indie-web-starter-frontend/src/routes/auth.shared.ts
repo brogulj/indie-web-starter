@@ -1,5 +1,6 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { AuthUser } from '../utils/auth';
+import type { BackendRequestOptions } from '../utils/backend';
 
 export type ContentStatus = 'draft' | 'published' | 'archived';
 
@@ -90,10 +91,10 @@ export type RequireAuthHandler = MiddlewareHandler;
 export type ContentAuthDeps = {
 	requireAuth: RequireAuthHandler;
 	getToken: (c: Context) => string | undefined;
-	resolveBaseCollections: () => Promise<unknown>;
-	loadDashboardContent: () => Promise<DashboardContentItem[]>;
-	loadCollectionTitleMap: () => Promise<Map<string, string>>;
-	loadCollectionMetaMap: () => Promise<Map<string, DashboardCollectionMeta>>;
+	resolveBaseCollections: (options?: BackendRequestOptions) => Promise<unknown>;
+	loadDashboardContent: (options?: BackendRequestOptions) => Promise<DashboardContentItem[]>;
+	loadCollectionTitleMap: (options?: BackendRequestOptions) => Promise<Map<string, string>>;
+	loadCollectionMetaMap: (options?: BackendRequestOptions) => Promise<Map<string, DashboardCollectionMeta>>;
 	resolvePendingWebmentions: (
 		items: DashboardContentItem[],
 		collectionMetaMap: Map<string, DashboardCollectionMeta>
@@ -113,7 +114,8 @@ export type ContentAuthDeps = {
 		token: string,
 		collectionMetaMap: Map<string, DashboardCollectionMeta>,
 		id: string,
-		trustDomain: boolean
+		trustDomain: boolean,
+		options?: BackendRequestOptions
 	) => Promise<void>;
 	render: (template: string, view: Record<string, unknown>) => string;
 	dashboardTemplate: string;
@@ -122,9 +124,9 @@ export type ContentAuthDeps = {
 export type FollowAuthDeps = {
 	requireAuth: RequireAuthHandler;
 	getToken: (c: Context) => string | undefined;
-	resolveBaseCollections: () => Promise<unknown>;
-	loadDashboardContent: () => Promise<DashboardContentItem[]>;
-	loadCollectionMetaMap: () => Promise<Map<string, DashboardCollectionMeta>>;
+	resolveBaseCollections: (options?: BackendRequestOptions) => Promise<unknown>;
+	loadDashboardContent: (options?: BackendRequestOptions) => Promise<DashboardContentItem[]>;
+	loadCollectionMetaMap: (options?: BackendRequestOptions) => Promise<Map<string, DashboardCollectionMeta>>;
 	resolveFollowingSources: (
 		items: DashboardContentItem[],
 		collectionMetaMap: Map<string, DashboardCollectionMeta>
@@ -132,12 +134,14 @@ export type FollowAuthDeps = {
 	createFollowingSource: (
 		token: string,
 		collectionMetaMap: Map<string, DashboardCollectionMeta>,
-		input: { siteUrl: string; feedUrl?: string; title?: string }
+		input: { siteUrl: string; feedUrl?: string; title?: string },
+		options?: BackendRequestOptions
 	) => Promise<void>;
 	removeFollowingSource: (
 		token: string,
 		collectionMetaMap: Map<string, DashboardCollectionMeta>,
-		id: string
+		id: string,
+		options?: BackendRequestOptions
 	) => Promise<void>;
 	render: (template: string, view: Record<string, unknown>) => string;
 	followingSourcesTemplate: string;
@@ -146,15 +150,18 @@ export type FollowAuthDeps = {
 export type FeedAuthDeps = {
 	requireAuth: RequireAuthHandler;
 	getToken: (c: Context) => string | undefined;
-	resolveBaseCollections: () => Promise<unknown>;
-	loadDashboardContent: () => Promise<DashboardContentItem[]>;
-	loadRecentOutboundWebmentions: () => Promise<DashboardContentItem[]>;
-	loadCollectionMetaMap: () => Promise<Map<string, DashboardCollectionMeta>>;
+	resolveBaseCollections: (options?: BackendRequestOptions) => Promise<unknown>;
+	loadDashboardContent: (options?: BackendRequestOptions) => Promise<DashboardContentItem[]>;
+	loadRecentOutboundWebmentions: (options?: BackendRequestOptions) => Promise<DashboardContentItem[]>;
+	loadCollectionMetaMap: (options?: BackendRequestOptions) => Promise<Map<string, DashboardCollectionMeta>>;
 	resolveFollowingSources: (
 		items: DashboardContentItem[],
 		collectionMetaMap: Map<string, DashboardCollectionMeta>
 	) => FollowingSourceItem[];
-	loadFollowingFeedItems: (sources: FollowingSourceItem[]) => Promise<FollowingFeedItem[]>;
+	loadFollowingFeedItems: (
+		sources: FollowingSourceItem[],
+		options?: { currentOrigin?: string; backendOptions?: BackendRequestOptions }
+	) => Promise<FollowingFeedItem[]>;
 	resolveOutboundWebmentions: (
 		items: DashboardContentItem[],
 		collectionMetaMap: Map<string, DashboardCollectionMeta>
@@ -186,13 +193,20 @@ export type FeedAuthDeps = {
 			errorMessage?: string;
 			commentText?: string;
 			mf2PropertyClass?: string;
-		}
+		},
+		options?: BackendRequestOptions
 	) => Promise<{ outboundId?: string; outboundUrl?: string }>;
-	updateOutboundWebmentionRecord: (token: string, outboundId: string, patch: Record<string, unknown>) => Promise<void>;
+	updateOutboundWebmentionRecord: (
+		token: string,
+		outboundId: string,
+		patch: Record<string, unknown>,
+		options?: BackendRequestOptions
+	) => Promise<void>;
 	sendWebmentionNotification: (
 		sourceUrl: string,
 		targetUrl: string,
-		timeoutMs?: number
+		timeoutMs?: number,
+		options?: BackendRequestOptions
 	) => Promise<{ endpointUrl: string; responseStatusCode: number }>;
 	render: (template: string, view: Record<string, unknown>) => string;
 	followingFeedTemplate: string;

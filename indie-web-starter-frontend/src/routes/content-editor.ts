@@ -7,6 +7,7 @@ import {
 	collectionSchemaPropertiesMap,
 } from '../types/collection-field-kinds.generated';
 import type { AuthUser } from '../utils/auth';
+import { buildBackendUrl, fetchBackend, resolveBackendRequestOptions, type BackendRequestOptions } from '../utils/backend';
 import { sonicGetCollectionsCached } from '../utils/sonic';
 import { getToken, requireAuth } from './auth';
 
@@ -1127,7 +1128,7 @@ const toIsoDate = (value: unknown): string => {
 	return '';
 };
 
-const buildApiUrl = (path: string): string => new URL(path, API_BASE_URL).toString();
+const buildApiUrl = (path: string, options?: BackendRequestOptions): string => buildBackendUrl(path, { apiBaseUrl: options?.apiBaseUrl ?? API_BASE_URL });
 
 const parseContentItem = (value: unknown): DashboardContentItem | null => {
 	const obj = asObject(value);
@@ -1164,7 +1165,7 @@ const parseContentListResponse = (payload: unknown): DashboardContentItem[] => {
 	return rawData.map((item) => parseContentItem(item)).filter((item): item is DashboardContentItem => Boolean(item));
 };
 
-const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: string): Promise<T> => {
+const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: string, options?: BackendRequestOptions): Promise<T> => {
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 	try {
@@ -1174,7 +1175,7 @@ const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: str
 		}
 		if (token) headers.set('authorization', `Bearer ${token}`);
 
-		const response = await fetch(buildApiUrl(path), { ...init, headers, signal: controller.signal });
+		const response = await fetchBackend(buildApiUrl(path, options), { ...init, headers, signal: controller.signal }, options);
 		if (!response.ok) {
 			let message = 'Content request failed';
 			try {
@@ -1197,8 +1198,8 @@ const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: str
 	}
 };
 
-const loadCollectionOptions = async (): Promise<DashboardCollectionOption[]> => {
-	const collections = await sonicGetCollectionsCached();
+const loadCollectionOptions = async (options?: BackendRequestOptions): Promise<DashboardCollectionOption[]> => {
+	const collections = await sonicGetCollectionsCached(options);
 	return collections
 		.filter((collection) => !HIDDEN_CREATE_COLLECTIONS.has(String(collection.name || '').trim().toLowerCase()))
 		.map((collection) => ({
@@ -1210,9 +1211,9 @@ const loadCollectionOptions = async (): Promise<DashboardCollectionOption[]> => 
 		}));
 };
 
-const loadCollectionOptionsSafe = async (): Promise<DashboardCollectionOption[]> => {
+const loadCollectionOptionsSafe = async (options?: BackendRequestOptions): Promise<DashboardCollectionOption[]> => {
 	try {
-		return await loadCollectionOptions();
+		return await loadCollectionOptions(options);
 	} catch {
 		return [];
 	}
@@ -1702,12 +1703,12 @@ const parseDataFromForm = (formData: FormData): { data: Record<string, unknown>;
 	}
 };
 
-const resolveCollectionTitle = async (value: string): Promise<string> => {
+const resolveCollectionTitle = async (value: string, options?: BackendRequestOptions): Promise<string> => {
 	const collectionKey = value.trim();
 	if (!collectionKey) return '';
 	try {
-		const options = await loadCollectionOptions();
-		const selected = options.find((item) => item.id === collectionKey || item.name === collectionKey);
+		const collectionOptions = await loadCollectionOptions(options);
+		const selected = collectionOptions.find((item) => item.id === collectionKey || item.name === collectionKey);
 		if (!selected) return collectionKey;
 		return selected.displayName || selected.name || selected.id;
 	} catch {
@@ -1724,9 +1725,9 @@ const parseApiResponseBody = async (response: Response): Promise<Record<string, 
 	}
 };
 
-const toAlternateLocalApiBaseUrl = (): string | null => {
+const toAlternateLocalApiBaseUrl = (baseApiUrl: string): string | null => {
 	try {
-		const current = new URL(API_BASE_URL);
+		const current = new URL(baseApiUrl);
 		if (current.hostname !== 'localhost' && current.hostname !== '127.0.0.1') return null;
 		if (current.port === '8787') return null;
 		current.port = '8787';
@@ -1742,6 +1743,7 @@ const uploadMediaViaApi = async (args: {
 	folder: string;
 	baseUrl: string;
 	useMultipleEndpoint?: boolean;
+	backendOptions?: BackendRequestOptions;
 }): Promise<{ response: Response; payload: Record<string, unknown> }> => {
 	const uploadFormData = new FormData();
 	if (args.useMultipleEndpoint) {
@@ -1754,13 +1756,17 @@ const uploadMediaViaApi = async (args: {
 	}
 
 	const endpointPath = args.useMultipleEndpoint ? '/api/media/upload-multiple' : '/api/media/upload';
-	const response = await fetch(new URL(endpointPath, args.baseUrl).toString(), {
-		method: 'POST',
-		headers: {
-			authorization: `Bearer ${args.token}`,
+	const response = await fetchBackend(
+		new URL(endpointPath, args.baseUrl).toString(),
+		{
+			method: 'POST',
+			headers: {
+				authorization: `Bearer ${args.token}`,
+			},
+			body: uploadFormData,
 		},
-		body: uploadFormData,
-	});
+		args.backendOptions
+	);
 	const payload = await parseApiResponseBody(response);
 	return { response, payload };
 };
@@ -1825,8 +1831,11 @@ const toEditorModel = (item?: DashboardContentItem): EditorViewModel => {
 	};
 };
 
-const renderPicker = async (c: Context, user: AuthUser): Promise<Response> => {
-	const [baseCollections, collectionOptions] = await Promise.all([resolveBaseCollections(), loadCollectionOptionsSafe()]);
+const renderPicker = async (c: Context, user: AuthUser, backendOptions?: BackendRequestOptions): Promise<Response> => {
+	const [baseCollections, collectionOptions] = await Promise.all([
+		resolveBaseCollections(backendOptions),
+		loadCollectionOptionsSafe(backendOptions),
+	]);
 	return c.html(
 		render(collectionPickerTemplate, {
 			title: 'Create Content',
@@ -1839,12 +1848,21 @@ const renderPicker = async (c: Context, user: AuthUser): Promise<Response> => {
 	);
 };
 
-const renderEditor = async (c: Context, user: AuthUser, model: EditorViewModel, status: 200 | 400 = 200): Promise<Response> => {
-	const [baseCollections, collectionOptions] = await Promise.all([resolveBaseCollections(), loadCollectionOptionsSafe()]);
+const renderEditor = async (
+	c: Context,
+	user: AuthUser,
+	model: EditorViewModel,
+	status: 200 | 400 = 200,
+	backendOptions?: BackendRequestOptions
+): Promise<Response> => {
+	const [baseCollections, collectionOptions] = await Promise.all([
+		resolveBaseCollections(backendOptions),
+		loadCollectionOptionsSafe(backendOptions),
+	]);
 	const routeCollection = model.collectionRouteParam || model.collectionId;
 	const encodedRouteCollection = encodeURIComponent(routeCollection);
 	const selectedCollection = resolveSelectedCollection(collectionOptions, model.collectionId || routeCollection);
-	const collectionTitle = selectedCollection?.displayName || (await resolveCollectionTitle(model.collectionId || routeCollection));
+	const collectionTitle = selectedCollection?.displayName || (await resolveCollectionTitle(model.collectionId || routeCollection, backendOptions));
 	const dataObject =
 		asObject(
 			(() => {
@@ -1889,19 +1907,19 @@ const renderEditor = async (c: Context, user: AuthUser, model: EditorViewModel, 
 	);
 };
 
-const loadContentById = async (id: string): Promise<DashboardContentItem | null> => {
-	const payload = await fetchApiJson<unknown>(`/api/content/${id}`, { method: 'GET' });
+const loadContentById = async (id: string, backendOptions?: BackendRequestOptions): Promise<DashboardContentItem | null> => {
+	const payload = await fetchApiJson<unknown>(`/api/content/${id}`, { method: 'GET' }, undefined, backendOptions);
 	return parseContentItemResponse(payload);
 };
 
-const resolveCollectionLookupKeys = async (collectionIdOrName: string): Promise<Set<string>> => {
+const resolveCollectionLookupKeys = async (collectionIdOrName: string, backendOptions?: BackendRequestOptions): Promise<Set<string>> => {
 	const normalized = collectionIdOrName.trim();
 	const keys = new Set<string>();
 	if (!normalized) return keys;
 	keys.add(normalized);
 
 	try {
-		const collections = await sonicGetCollectionsCached();
+		const collections = await sonicGetCollectionsCached(backendOptions);
 		const match = collections.find((item) => item.id === normalized || item.name === normalized);
 		if (match?.id) keys.add(match.id);
 		if (match?.name) keys.add(match.name);
@@ -1912,33 +1930,35 @@ const resolveCollectionLookupKeys = async (collectionIdOrName: string): Promise<
 	return keys;
 };
 
-const loadContentForCollection = async (collectionId: string): Promise<DashboardContentItem[]> => {
+const loadContentForCollection = async (collectionId: string, backendOptions?: BackendRequestOptions): Promise<DashboardContentItem[]> => {
 	const params = new URLSearchParams();
 	params.set('limit', '100');
 	params.set('sort', '-updatedAt');
-	const payload = await fetchApiJson<unknown>(`/api/content?${params.toString()}`, { method: 'GET' });
-	const lookupKeys = await resolveCollectionLookupKeys(collectionId);
+	const payload = await fetchApiJson<unknown>(`/api/content?${params.toString()}`, { method: 'GET' }, undefined, backendOptions);
+	const lookupKeys = await resolveCollectionLookupKeys(collectionId, backendOptions);
 	return parseContentListResponse(payload).filter((item) => lookupKeys.has(String(item.collectionId || '').trim()));
 };
 
 export const registerContentEditorRoutes = (app: Hono): void => {
 	const openCreateForCollection = async (c: Context, collectionParam: string): Promise<Response> => {
 		const user = c.get('authUser') as AuthUser;
+		const backendOptions = resolveBackendRequestOptions(c);
 		const resolved = resolveCollectionByRoute(collectionParam);
 		const model = toEditorModel();
 		model.collectionId = resolved.collectionId;
 		model.collectionRouteParam = resolved.routeParam;
-		return renderEditor(c, user, model);
+		return renderEditor(c, user, model, 200, backendOptions);
 	};
 
 	const openCollectionList = async (c: Context, collectionParam: string): Promise<Response> => {
 		const user = c.get('authUser') as AuthUser;
+		const backendOptions = resolveBackendRequestOptions(c);
 		const resolved = resolveCollectionByRoute(collectionParam);
-		const baseCollections = await resolveBaseCollections();
-		const collectionTitle = await resolveCollectionTitle(resolved.collectionId || resolved.routeParam);
+		const baseCollections = await resolveBaseCollections(backendOptions);
+		const collectionTitle = await resolveCollectionTitle(resolved.collectionId || resolved.routeParam, backendOptions);
 		let items: DashboardContentItem[] = [];
 		try {
-			items = await loadContentForCollection(resolved.collectionId);
+			items = await loadContentForCollection(resolved.collectionId, backendOptions);
 		} catch {
 			items = [];
 		}
@@ -1965,6 +1985,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 	const createInCollection = async (c: Context, collectionParam: string): Promise<Response> => {
 		const user = c.get('authUser') as AuthUser;
 		const token = getToken(c);
+		const backendOptions = resolveBackendRequestOptions(c);
 		const resolved = resolveCollectionByRoute(collectionParam);
 		if (!token) {
 			return c.redirect(`/login?redirect=${encodeURIComponent(`/dashboard/${resolved.routeParam}/new`)}`);
@@ -1977,7 +1998,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 		const rawDataJson = String(formData.get('dataJson') ?? '');
 		const parsed = parseDataFromForm(formData);
 		const legacyCollectionId = String(formData.get('collectionId') ?? '').trim();
-		const collectionOptions = await loadCollectionOptionsSafe();
+		const collectionOptions = await loadCollectionOptionsSafe(backendOptions);
 		const requiredError = validateRequiredFields(
 			collectionOptions,
 			resolved.collectionId || resolved.routeParam || legacyCollectionId,
@@ -1994,13 +2015,13 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 		};
 
 		if (!resolved.collectionId || !title || !slug) {
-			return renderEditor(c, user, { ...model, formError: 'Collection, title, and slug are required.' }, 400);
+			return renderEditor(c, user, { ...model, formError: 'Collection, title, and slug are required.' }, 400, backendOptions);
 		}
 		if (parsed.error) {
-			return renderEditor(c, user, { ...model, formError: parsed.error }, 400);
+			return renderEditor(c, user, { ...model, formError: parsed.error }, 400, backendOptions);
 		}
 		if (requiredError) {
-			return renderEditor(c, user, { ...model, formError: requiredError }, 400);
+			return renderEditor(c, user, { ...model, formError: requiredError }, 400, backendOptions);
 		}
 
 		try {
@@ -2017,7 +2038,8 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 							data: parsed.data,
 						}),
 					},
-					token
+					token,
+					backendOptions
 				);
 				return c.redirect(`/dashboard/${encodeURIComponent(legacyCollectionId)}/${encodeURIComponent(resolved.routeParam)}?saved=1`);
 			}
@@ -2034,7 +2056,8 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 						data: parsed.data,
 					}),
 				},
-				token
+				token,
+				backendOptions
 			);
 			const created = parseContentItemResponse(createdPayload);
 			if (!created?.id) return c.redirect(`/dashboard/${encodeURIComponent(resolved.routeParam)}?saved=1`);
@@ -2042,20 +2065,21 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 			return c.redirect(`/dashboard/${pathCollection}/${created.id}?saved=1`);
 		} catch (error) {
 			const message = error instanceof ContentApiError ? error.message : 'Failed to create content.';
-			return renderEditor(c, user, { ...model, formError: message }, 400);
+			return renderEditor(c, user, { ...model, formError: message }, 400, backendOptions);
 		}
 	};
 
 	const openEditForCollection = async (c: Context, collectionParam: string, id: string): Promise<Response> => {
 		const user = c.get('authUser') as AuthUser;
+		const backendOptions = resolveBackendRequestOptions(c);
 		if (!id) return c.html('Content not found', 404);
 		try {
-			const item = await loadContentById(id);
+			const item = await loadContentById(id, backendOptions);
 			if (!item) return c.html('Content not found', 404);
 			const model = toEditorModel(item);
 			model.collectionRouteParam = collectionParam || item.collectionId;
 			model.formSuccess = c.req.query('saved') === '1' ? 'Content saved.' : undefined;
-			return renderEditor(c, user, model);
+			return renderEditor(c, user, model, 200, backendOptions);
 		} catch (error) {
 			const message = error instanceof ContentApiError ? error.message : 'Failed to load content item.';
 			return c.html(message, 500);
@@ -2065,6 +2089,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 	const updateInCollection = async (c: Context, collectionParam: string, id: string): Promise<Response> => {
 		const user = c.get('authUser') as AuthUser;
 		const token = getToken(c);
+		const backendOptions = resolveBackendRequestOptions(c);
 		if (!token) return c.redirect(`/login?redirect=${encodeURIComponent(c.req.path)}`);
 
 		const resolved = resolveCollectionByRoute(collectionParam);
@@ -2074,7 +2099,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 		const status = parseContentStatus(String(formData.get('status') ?? 'draft'));
 		const rawDataJson = String(formData.get('dataJson') ?? '');
 		const parsed = parseDataFromForm(formData);
-		const collectionOptions = await loadCollectionOptionsSafe();
+		const collectionOptions = await loadCollectionOptionsSafe(backendOptions);
 		const requiredError = validateRequiredFields(collectionOptions, resolved.collectionId || resolved.routeParam, parsed.data);
 		const model: EditorViewModel = {
 			mode: 'edit',
@@ -2087,9 +2112,9 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 			dataJson: parsed.error ? rawDataJson : JSON.stringify(parsed.data, null, 2),
 		};
 
-		if (!title || !slug) return renderEditor(c, user, { ...model, formError: 'Title and slug are required.' }, 400);
-		if (parsed.error) return renderEditor(c, user, { ...model, formError: parsed.error }, 400);
-		if (requiredError) return renderEditor(c, user, { ...model, formError: requiredError }, 400);
+		if (!title || !slug) return renderEditor(c, user, { ...model, formError: 'Title and slug are required.' }, 400, backendOptions);
+		if (parsed.error) return renderEditor(c, user, { ...model, formError: parsed.error }, 400, backendOptions);
+		if (requiredError) return renderEditor(c, user, { ...model, formError: requiredError }, 400, backendOptions);
 
 		try {
 			await fetchApiJson<unknown>(
@@ -2103,19 +2128,21 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 						data: parsed.data,
 					}),
 				},
-				token
+				token,
+				backendOptions
 			);
 			const pathCollection = encodeURIComponent(resolved.routeParam || resolved.collectionId);
 			return c.redirect(`/dashboard/${pathCollection}/${id}?saved=1`);
 		} catch (error) {
 			const message = error instanceof ContentApiError ? error.message : 'Failed to update content.';
-			return renderEditor(c, user, { ...model, formError: message }, 400);
+			return renderEditor(c, user, { ...model, formError: message }, 400, backendOptions);
 		}
 	};
 
 	app.get('/dashboard/content/new', requireAuth, async (c) => {
 		const user = c.get('authUser') as AuthUser;
-		return renderPicker(c, user);
+		const backendOptions = resolveBackendRequestOptions(c);
+		return renderPicker(c, user, backendOptions);
 	});
 
 	app.get('/dashboard/content/:collection/new', requireAuth, async (c) => {
@@ -2170,6 +2197,8 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 	app.post('/dashboard/media/upload', async (c) => {
 		const token = getToken(c);
 		if (!token) return c.json({ error: 'Unauthorized' }, 401);
+		const backendOptions = resolveBackendRequestOptions(c);
+		const mediaApiBaseUrl = process.env.MEDIA_API_URL ?? backendOptions.apiBaseUrl ?? MEDIA_API_BASE_URL;
 
 		let formData: FormData;
 		try {
@@ -2180,7 +2209,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 				{
 					error: 'Invalid upload request body',
 					details: message,
-					targetApiBaseUrl: MEDIA_API_BASE_URL,
+					targetApiBaseUrl: mediaApiBaseUrl,
 				},
 				400
 			);
@@ -2193,14 +2222,14 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 				{
 					error: 'No file provided',
 					details: 'Expected multipart field "file" or "files".',
-					targetApiBaseUrl: MEDIA_API_BASE_URL,
+					targetApiBaseUrl: mediaApiBaseUrl,
 				},
 				400
 			);
 		}
 
-		const baseCandidates = [MEDIA_API_BASE_URL];
-		const alternateLocal = toAlternateLocalApiBaseUrl();
+		const baseCandidates = [mediaApiBaseUrl];
+		const alternateLocal = toAlternateLocalApiBaseUrl(mediaApiBaseUrl);
 		if (alternateLocal) baseCandidates.push(alternateLocal);
 
 		let lastPayload: Record<string, unknown> = { error: 'Media upload failed' };
@@ -2209,7 +2238,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 
 		for (const baseUrl of baseCandidates) {
 			try {
-				const single = await uploadMediaViaApi({ token, file, folder, baseUrl });
+				const single = await uploadMediaViaApi({ token, file, folder, baseUrl, backendOptions });
 				attempts.push({
 					baseUrl,
 					endpoint: '/api/media/upload',
@@ -2223,7 +2252,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 				lastStatus = single.response.status;
 
 				// Try alternate upload endpoint regardless of initial error code.
-				const multiple = await uploadMediaViaApi({ token, file, folder, baseUrl, useMultipleEndpoint: true });
+				const multiple = await uploadMediaViaApi({ token, file, folder, baseUrl, useMultipleEndpoint: true, backendOptions });
 				attempts.push({
 					baseUrl,
 					endpoint: '/api/media/upload-multiple',
@@ -2264,7 +2293,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 				details: lastPayload.details,
 				attempts,
 				lastPayload,
-				targetApiBaseUrl: MEDIA_API_BASE_URL,
+				targetApiBaseUrl: mediaApiBaseUrl,
 			},
 			lastStatus as 400 | 401 | 403 | 404 | 405 | 413 | 500 | 502
 		);

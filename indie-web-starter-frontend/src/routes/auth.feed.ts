@@ -1,16 +1,18 @@
 import type { Context, Hono } from 'hono';
 import type { AuthUser } from '../utils/auth';
+import { resolveBackendRequestOptions } from '../utils/backend';
 import type { FeedAuthDeps } from './auth.shared';
 
 export const registerFeedAuthRoutes = (app: Hono, deps: FeedAuthDeps): void => {
 	app.get('/dashboard/following/feed', deps.requireAuth, (c) => {
 		const user = c.get('authUser') as AuthUser;
 		const token = deps.getToken(c);
+		const backendOptions = resolveBackendRequestOptions(c);
 		return Promise.all([
-			deps.resolveBaseCollections(),
-			deps.loadDashboardContent().catch(() => []),
-			deps.loadRecentOutboundWebmentions().catch(() => []),
-			deps.loadCollectionMetaMap().catch(() => new Map()),
+			deps.resolveBaseCollections(backendOptions),
+			deps.loadDashboardContent(backendOptions).catch(() => []),
+			deps.loadRecentOutboundWebmentions(backendOptions).catch(() => []),
+			deps.loadCollectionMetaMap(backendOptions).catch(() => new Map()),
 		]).then(async ([baseCollections, items, recentOutboundItems, collectionMetaMap]) => {
 			const mergedItems = (() => {
 				if (recentOutboundItems.length === 0) return items;
@@ -24,7 +26,13 @@ export const registerFeedAuthRoutes = (app: Hono, deps: FeedAuthDeps): void => {
 				return Array.from(byId.values());
 			})();
 			const followingSources = deps.resolveFollowingSources(mergedItems, collectionMetaMap);
-			const followingFeedItems = token ? await deps.loadFollowingFeedItems(followingSources) : [];
+			const backendOptions = resolveBackendRequestOptions(c);
+			const followingFeedItems = token
+				? await deps.loadFollowingFeedItems(followingSources, {
+						currentOrigin: new URL(c.req.url).origin,
+						backendOptions,
+					})
+				: [];
 			const outboundByTarget = deps.resolveOutboundWebmentions(mergedItems, collectionMetaMap);
 			const inboundRepliesByTarget = deps.resolveInboundRepliesByTarget(mergedItems, collectionMetaMap);
 			const wmType = String(c.req.query('wmType') ?? '').trim();
@@ -95,7 +103,8 @@ export const registerFeedAuthRoutes = (app: Hono, deps: FeedAuthDeps): void => {
 				? c.json({ ok: false, error: 'Invalid target URL.' }, 400)
 				: c.redirect('/dashboard/following/feed?wmError=Invalid%20target%20URL.');
 		}
-		const metaMap = await deps.loadCollectionMetaMap();
+		const backendOptions = resolveBackendRequestOptions(c);
+		const metaMap = await deps.loadCollectionMetaMap(backendOptions);
 		const actionType = action === 'like' ? 'like' : 'reply';
 		const mf2PropertyClass = action === 'like' ? 'u-like-of' : 'u-in-reply-to';
 		const created = await deps.createOutboundWebmentionRecord(token, metaMap, {
@@ -108,7 +117,7 @@ export const registerFeedAuthRoutes = (app: Hono, deps: FeedAuthDeps): void => {
 			sourceSlug: '',
 			commentText: action === 'reply' ? commentText : '',
 			mf2PropertyClass,
-		});
+		}, backendOptions);
 		if (!created.outboundId || !created.outboundUrl) {
 			const message = 'Failed to create outbound webmention source.';
 			return wantsJson
@@ -122,10 +131,10 @@ export const registerFeedAuthRoutes = (app: Hono, deps: FeedAuthDeps): void => {
 			sourceSlug: created.outboundUrl.split('/').pop() || '',
 			mf2PropertyClass,
 			errorMessage: '',
-		});
+		}, backendOptions);
 
 		try {
-			const delivery = await deps.sendWebmentionNotification(sourceUrl, targetUrl, 6000);
+			const delivery = await deps.sendWebmentionNotification(sourceUrl, targetUrl, 6000, backendOptions);
 			await deps.updateOutboundWebmentionRecord(token, created.outboundId, {
 				sourceUrl,
 				mentionType: actionType,
@@ -133,7 +142,7 @@ export const registerFeedAuthRoutes = (app: Hono, deps: FeedAuthDeps): void => {
 				endpointUrl: delivery.endpointUrl,
 				responseStatusCode: delivery.responseStatusCode,
 				errorMessage: '',
-			});
+			}, backendOptions);
 			return wantsJson
 				? c.json({ ok: true, mentionType: actionType, status: 'sent', outboundUrl: created.outboundUrl })
 				: c.redirect(`/dashboard/following/feed?wmSent=1&wmType=${actionType}`);
@@ -145,7 +154,7 @@ export const registerFeedAuthRoutes = (app: Hono, deps: FeedAuthDeps): void => {
 				mentionType: actionType,
 				deliveryStatus: 'failed',
 				errorMessage: sanitized,
-			});
+			}, backendOptions);
 			return wantsJson
 				? c.json(
 						{ ok: false, error: sanitized, mentionType: actionType, status: 'failed', outboundUrl: created.outboundUrl },

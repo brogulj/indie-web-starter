@@ -1,15 +1,17 @@
 import type { Hono } from 'hono';
 import type { AuthUser } from '../utils/auth';
+import { resolveBackendRequestOptions } from '../utils/backend';
 import type { ContentAuthDeps } from './auth.shared';
 
 export const registerContentAuthRoutes = (app: Hono, deps: ContentAuthDeps): void => {
 	app.get('/dashboard', deps.requireAuth, (c) => {
 		const user = c.get('authUser') as AuthUser;
+		const backendOptions = resolveBackendRequestOptions(c);
 		return Promise.all([
-			deps.resolveBaseCollections(),
-			deps.loadDashboardContent().catch(() => []),
-			deps.loadCollectionTitleMap().catch(() => new Map<string, string>()),
-			deps.loadCollectionMetaMap().catch(() => new Map()),
+			deps.resolveBaseCollections(backendOptions),
+			deps.loadDashboardContent(backendOptions).catch(() => []),
+			deps.loadCollectionTitleMap(backendOptions).catch(() => new Map<string, string>()),
+			deps.loadCollectionMetaMap(backendOptions).catch(() => new Map()),
 		]).then(async ([baseCollections, items, collectionTitles, collectionMetaMap]) => {
 			const pendingWebmentions = deps.resolvePendingWebmentions(items, collectionMetaMap);
 			const collectionSections = deps.groupDashboardItemsByCollection(items, collectionTitles, deps.systemCollectionNames);
@@ -46,8 +48,9 @@ export const registerContentAuthRoutes = (app: Hono, deps: ContentAuthDeps): voi
 		try {
 			const formData = await c.req.formData();
 			const trustDomain = String(formData.get('trustDomain') ?? '') === '1';
-			const metaMap = await deps.loadCollectionMetaMap();
-			await deps.approveWebmentionById(token, metaMap, id, trustDomain);
+			const backendOptions = resolveBackendRequestOptions(c);
+			const metaMap = await deps.loadCollectionMetaMap(backendOptions);
+			await deps.approveWebmentionById(token, metaMap, id, trustDomain, backendOptions);
 			return c.redirect(`/dashboard?wmApproved=1${trustDomain ? '&trusted=1' : ''}`);
 		} catch (error) {
 			console.error(error);

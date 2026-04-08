@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.API_URL ?? 'http://localhost:8788';
+import { buildBackendUrl, fetchBackend, type BackendRequestOptions } from './backend';
+
 const REQUEST_TIMEOUT_MS = Number(process.env.SONIC_TIMEOUT_MS ?? '8000');
 
 export type AuthUser = {
@@ -29,26 +30,31 @@ export class AuthApiError extends Error {
 	}
 }
 
-const buildAuthUrl = (path: string): string => {
-	return new URL(path, API_BASE_URL).toString();
+const buildAuthUrl = (path: string, apiBaseUrl?: string): string => {
+	return buildBackendUrl(path, { apiBaseUrl });
 };
 
-const fetchJson = async <T>(url: string, init: RequestInit): Promise<T> => {
+const fetchJson = async <T>(url: string, init: RequestInit, options?: BackendRequestOptions): Promise<T> => {
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
 	try {
-		const response = await fetch(url, {
+		const requestInit = {
 			...init,
 			signal: controller.signal,
-		});
+		};
+		const response = await fetchBackend(url, requestInit, options);
 
 		if (!response.ok) {
 			let message = 'Authentication request failed';
 			try {
-				const data = (await response.json()) as { error?: string };
+				const raw = await response.text();
+				const data = (raw ? JSON.parse(raw) : {}) as { error?: string; message?: string; [key: string]: unknown };
+
 				if (typeof data.error === 'string' && data.error.length > 0) {
 					message = data.error;
+				} else if (typeof data.message === 'string' && data.message.length > 0) {
+					message = data.message;
 				}
 			} catch {
 				// Ignore parsing errors and keep generic message.
@@ -68,24 +74,28 @@ const fetchJson = async <T>(url: string, init: RequestInit): Promise<T> => {
 	}
 };
 
-export const authLogin = async (email: string, password: string): Promise<LoginResponse> => {
-	const url = buildAuthUrl('/auth/login');
+type AuthRequestOptions = BackendRequestOptions;
+
+export const authLogin = async (email: string, password: string, options?: AuthRequestOptions): Promise<LoginResponse> => {
+	const apiBaseUrl = options?.apiBaseUrl;
+	const url = buildAuthUrl('/auth/login', apiBaseUrl);
 	return fetchJson<LoginResponse>(url, {
 		method: 'POST',
 		headers: {
 			'content-type': 'application/json',
 		},
 		body: JSON.stringify({ email, password }),
-	});
+	}, options);
 };
 
-export const authGetCurrentUser = async (token: string): Promise<AuthUser> => {
-	const url = buildAuthUrl('/auth/me');
+export const authGetCurrentUser = async (token: string, options?: AuthRequestOptions): Promise<AuthUser> => {
+	const apiBaseUrl = options?.apiBaseUrl;
+	const url = buildAuthUrl('/auth/me', apiBaseUrl);
 	const response = await fetchJson<MeResponse>(url, {
 		method: 'GET',
 		headers: {
 			authorization: `Bearer ${token}`,
 		},
-	});
+	}, options);
 	return response.user;
 };

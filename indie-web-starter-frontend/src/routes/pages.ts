@@ -8,6 +8,7 @@ import { notFoundTemplate } from '../templates/not-found';
 import { pageTemplates } from '../templates/pages';
 import { type CollectionFilter, SonicApiError, sonicGetCollectionsCached, sonicGetContent } from '../utils/sonic';
 import { buildArchiveItems, toFieldLabel } from '../utils/view-models';
+import { resolveBackendRequestOptions, type BackendRequestOptions } from '../utils/backend';
 
 const notFound = (): Response => new Response(render(notFoundTemplate, { title: '404' }), { status: 404, headers: { 'content-type': 'text/html; charset=UTF-8' } });
 const ARCHIVE_PAGE_SIZE = Number(process.env.ARCHIVE_PAGE_SIZE ?? '10');
@@ -26,14 +27,18 @@ export const routeWarningFor = (page: string, hasCollection: boolean, hasArchive
 	return undefined;
 };
 
-const renderPage = async (page: string, auth: { isAuthenticated: boolean; authUser?: unknown }): Promise<Response | null> => {
+const renderPage = async (
+	page: string,
+	auth: { isAuthenticated: boolean; authUser?: unknown },
+	backendOptions: BackendRequestOptions
+): Promise<Response | null> => {
 	const pageTemplate = pageTemplates[page];
 	if (!pageTemplate) return null;
 
 	const [baseCollections, pageCollections, collections, hasArchiveTemplate] = await Promise.all([
-		resolveBaseCollections(),
-		resolvePageCollections(page),
-		sonicGetCollectionsCached().catch((error) => {
+		resolveBaseCollections(backendOptions),
+		resolvePageCollections(page, backendOptions),
+		sonicGetCollectionsCached(backendOptions).catch((error) => {
 			console.error('Failed to load collections while resolving route overlaps', error);
 			return [];
 		}),
@@ -61,18 +66,20 @@ const isNotFoundError = (error: unknown): boolean => {
 export const registerPageRoutes = (app: Hono): void => {
 	app.get('/', async (c) => {
 		const auth = await resolveAuthState(c);
-		const response = await renderPage('home', auth);
+		const backendOptions = resolveBackendRequestOptions(c);
+		const response = await renderPage('home', auth, backendOptions);
 		return response ?? notFound();
 	});
 
 	app.get('/:page', async (c) => {
 		const page = c.req.param('page');
 		const auth = await resolveAuthState(c);
-		const pageResponse = await renderPage(page, auth);
+		const backendOptions = resolveBackendRequestOptions(c);
+		const pageResponse = await renderPage(page, auth, backendOptions);
 		if (pageResponse) return pageResponse;
 
 		try {
-			const collections = await sonicGetCollectionsCached();
+			const collections = await sonicGetCollectionsCached(backendOptions);
 			const collectionExists = collections.some((collection) => collection.name === page);
 			if (!collectionExists) {
 				return c.html(render(notFoundTemplate, { title: '404' }), 404);
@@ -87,9 +94,9 @@ export const registerPageRoutes = (app: Hono): void => {
 				: [{ field: 'status', operator: 'not_equals', value: 'draft' }];
 
 			const [baseCollections, items, requiredCollections] = await Promise.all([
-				resolveBaseCollections(),
-				sonicGetContent(page, statusFilters),
-				resolveCollectionArchiveCollections(page),
+				resolveBaseCollections(backendOptions),
+				sonicGetContent(page, statusFilters, backendOptions),
+				resolveCollectionArchiveCollections(page, backendOptions),
 			]);
 			const requestedPage = Number.parseInt(String(c.req.query('page') ?? '1'), 10);
 			const currentPage = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;

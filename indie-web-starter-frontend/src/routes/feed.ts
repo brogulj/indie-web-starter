@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
 import { type CollectionFilter, sonicGetCollectionsCached, sonicGetContent } from '../utils/sonic';
+import { resolveBackendRequestOptions } from '../utils/backend';
 
 const FEED_EXCLUDED_COLLECTIONS = new Set([
 	'webmentions',
@@ -249,6 +250,7 @@ const buildRepliesHtml = (replies: ReplyComment[], origin: string): string => {
 export const registerFeedRoutes = (app: Hono): void => {
 	app.get('/feed', async (c) => {
 		try {
+			const backendOptions = resolveBackendRequestOptions(c);
 			const env = c.env as Record<string, string | undefined>;
 			const siteUrl = new URL(c.req.url);
 			const origin = siteUrl.origin;
@@ -268,7 +270,7 @@ export const registerFeedRoutes = (app: Hono): void => {
 			);
 			const feedProfileImage = configuredProfileImage ? resolveAbsoluteUrl(configuredProfileImage, origin) : '';
 			const statusFilter: CollectionFilter[] = [{ field: 'status', operator: 'equals', value: 'published' }];
-			const replyCommentsByTarget = await sonicGetContent('webmentions', statusFilter)
+			const replyCommentsByTarget = await sonicGetContent('webmentions', statusFilter, backendOptions)
 				.then((items) => {
 					const result = new Map<string, ReplyComment[]>();
 					for (const item of items) {
@@ -335,14 +337,14 @@ export const registerFeedRoutes = (app: Hono): void => {
 					return new Map<string, ReplyComment[]>();
 				});
 
-			const collections = (await sonicGetCollectionsCached()).filter(
+			const collections = (await sonicGetCollectionsCached(backendOptions)).filter(
 				(collection) => !FEED_EXCLUDED_COLLECTIONS.has(String(collection.name || '').toLowerCase())
 			);
 
 			const itemsByCollection = await Promise.all(
 				collections.map(async (collection) => {
 					try {
-						const items = await sonicGetContent(collection.name, statusFilter);
+						const items = await sonicGetContent(collection.name, statusFilter, backendOptions);
 						return items.map((item) => {
 							const link = `${origin}/${encodeURIComponent(collection.name)}/${encodeURIComponent(item.slug)}`;
 							const dataObject = item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : {};

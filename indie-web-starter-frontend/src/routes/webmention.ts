@@ -1,4 +1,5 @@
 import type { Hono } from 'hono';
+import { fetchBackend, resolveBackendRequestOptions, type BackendRequestOptions } from '../utils/backend';
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_SOURCE = 10;
@@ -121,32 +122,33 @@ const isDisallowedSourceHost = (host: string): boolean => {
 	return false;
 };
 
-const resolveBackendIngestEndpoint = (env: Record<string, string | undefined>): string => {
+const resolveBackendIngestEndpoint = (env: Record<string, string | undefined>, options?: BackendRequestOptions): string => {
 	const explicit = env.WEBMENTION_ENDPOINT_URL ?? process.env.WEBMENTION_ENDPOINT_URL;
 	if (explicit) return explicit;
-	const apiBase = process.env.API_URL ?? 'http://localhost:8788';
+	const apiBase = options?.apiBaseUrl ?? process.env.API_URL ?? 'http://localhost:8788';
 	return new URL('/api/webmentions/ingest', apiBase).toString();
 };
 
 const forwardToBackendIngest = async (
 	sourceUrl: string,
 	targetUrl: string,
-	env: Record<string, string | undefined>
+	env: Record<string, string | undefined>,
+	options?: BackendRequestOptions
 ): Promise<{ status: number; error?: string }> => {
 	const sharedSecret = env.WEBMENTION_SHARED_SECRET ?? process.env.WEBMENTION_SHARED_SECRET;
 	if (!sharedSecret) {
 		return { status: 500, error: 'Webmention receiver is missing a valid API token for content writes.' };
 	}
 
-	const endpoint = resolveBackendIngestEndpoint(env);
-	const response = await fetch(endpoint, {
+	const endpoint = resolveBackendIngestEndpoint(env, options);
+	const response = await fetchBackend(endpoint, {
 		method: 'POST',
 		headers: {
 			'content-type': 'application/json',
 			authorization: `Bearer ${sharedSecret}`,
 		},
 		body: JSON.stringify({ source: sourceUrl, target: targetUrl }),
-	});
+	}, options);
 
 	if (response.status === 202) return { status: 202 };
 	if (response.status === 400 || response.status === 401 || response.status === 403 || response.status === 422 || response.status === 429 || response.status === 500) {
@@ -173,6 +175,7 @@ export const registerWebmentionRoutes = (app: Hono): void => {
 
 	app.post('/webmention', async (c) => {
 		const env = c.env as Record<string, string | undefined>;
+		const backendOptions = resolveBackendRequestOptions(c);
 		const formData = await c.req.formData();
 		const sourceValue = String(formData.get('source') ?? '').trim();
 		const targetValue = String(formData.get('target') ?? '').trim();
@@ -233,7 +236,7 @@ export const registerWebmentionRoutes = (app: Hono): void => {
 		}
 
 		try {
-			const forwarded = await forwardToBackendIngest(sourceUrl, targetUrl, env);
+			const forwarded = await forwardToBackendIngest(sourceUrl, targetUrl, env, backendOptions);
 			if (forwarded.status === 202) {
 				logWebmention('accepted_via_backend_ingest', {
 					sourceUrl,

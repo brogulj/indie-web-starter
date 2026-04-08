@@ -23,26 +23,25 @@ export type WebmentionPayload = {
 	counts: WebmentionSummary;
 };
 
-const API_BASE_URL = process.env.API_URL ?? 'http://localhost:8788';
 const REQUEST_TIMEOUT_MS = Number(process.env.SONIC_TIMEOUT_MS ?? '8000');
 
-const buildApiUrl = (path: string, params?: URLSearchParams): string => {
-	const url = new URL(path, API_BASE_URL);
+const buildApiUrl = (path: string, params?: URLSearchParams, options?: BackendRequestOptions): string => {
+	const url = new URL(buildBackendUrl(path, options));
 	if (params) {
 		url.search = params.toString();
 	}
 	return url.toString();
 };
 
-export const getApprovedWebmentions = async (targetUrl: string): Promise<WebmentionPayload> => {
+export const getApprovedWebmentions = async (targetUrl: string, options?: BackendRequestOptions): Promise<WebmentionPayload> => {
 	const params = new URLSearchParams();
 	params.set('target', targetUrl);
-	const requestUrl = buildApiUrl('/api/webmentions/mentions', params);
+	const requestUrl = buildApiUrl('/api/webmentions/mentions', params, options);
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
 	try {
-		const response = await fetch(requestUrl, { signal: controller.signal });
+		const response = await fetchBackend(requestUrl, { signal: controller.signal }, options);
 		if (response.status === 404) {
 			return {
 				mentions: [],
@@ -76,3 +75,4 @@ export const getApprovedWebmentions = async (targetUrl: string): Promise<Webment
 		clearTimeout(timeoutId);
 	}
 };
+import { buildBackendUrl, fetchBackend, type BackendRequestOptions } from './backend';

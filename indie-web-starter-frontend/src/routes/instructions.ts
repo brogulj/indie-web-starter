@@ -6,14 +6,16 @@ import { collectionInstructionsTemplate } from '../templates/collection-instruct
 import { notFoundTemplate } from '../templates/not-found';
 import { sonicGetCollectionsCached } from '../utils/sonic';
 import { buildInstructionFields, toFieldLabel } from '../utils/view-models';
+import { resolveBackendRequestOptions } from '../utils/backend';
 
 export const registerInstructionRoutes = (app: Hono): void => {
 	app.get('/:collection/instructions', requireAuth, async (c) => {
 		const collection = c.req.param('collection') ?? '';
 		const authUser = c.get('authUser');
+		const backendOptions = resolveBackendRequestOptions(c);
 
 		try {
-			const collections = await sonicGetCollectionsCached();
+			const collections = await sonicGetCollectionsCached(backendOptions);
 			const selectedCollection = collections.find((item) => item.name === collection);
 			if (!selectedCollection) {
 				return c.html(
@@ -21,7 +23,7 @@ export const registerInstructionRoutes = (app: Hono): void => {
 						title: '404',
 						isAuthenticated: true,
 						authUser,
-						collections: await resolveBaseCollections(),
+						collections: await resolveBaseCollections(backendOptions),
 					}),
 					404
 				);
@@ -39,7 +41,7 @@ export const registerInstructionRoutes = (app: Hono): void => {
 					displayName,
 					description,
 					fields,
-					collections: await resolveBaseCollections(),
+					collections: await resolveBaseCollections(backendOptions),
 					isAuthenticated: true,
 					authUser,
 				})
