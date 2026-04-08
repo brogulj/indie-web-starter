@@ -1,0 +1,28 @@
+# Ignore local SonicJS clone in this workspace
+sonicjs/
+
+# Dependencies
+**/node_modules/
+**/.pnpm-store/
+
+# Build and tool outputs
+**/dist/
+**/build/
+**/.wrangler/
+**/.mf/
+**/.vite/
+**/.vite-temp/
+**/coverage/
+
+# Logs and OS noise
+**/*.log
+**/.DS_Store
+
+# Local env files
+**/.env
+**/.env.*
+**/.dev.vars
+
+# Keep example env files committed
+!**/.env.example
+!**/.dev.vars.example

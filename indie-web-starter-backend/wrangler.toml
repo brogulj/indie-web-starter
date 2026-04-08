@@ -1,0 +1,31 @@
+name = "indie-web-starter"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Workers settings
+workers_dev = true
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+migrations_dir = "./node_modules/@sonicjs-cms/core/migrations"
+
+# R2 Bucket for media storage
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+
+# Environment variables
+[vars]
+ENVIRONMENT = "development"
+WEBMENTION_ALLOWED_HOSTS = "localhost"
+# Set via `wrangler secret put WEBMENTION_SHARED_SECRET`
+
+# Production environment
+[env.production]
+name = "my-sonicjs-app-production"
+vars = { ENVIRONMENT = "production" }
+
+# Observability
+[observability]
+enabled = true
