@@ -943,6 +943,47 @@ const resolveEndpointFromHtml = (html: string, baseUrl: string): string => {
 	return '';
 };
 
+const collectFetchDebugInfo = async (
+	response: Response,
+	maxSnippetLength = 1500
+): Promise<{
+	status: number;
+	statusText: string;
+	finalUrl: string;
+	contentType: string;
+	locationHeader: string;
+	cacheStatus: string;
+	cfRay: string;
+	server: string;
+	bodySnippet: string;
+}> => {
+	const contentType = response.headers.get('content-type') || '';
+	const locationHeader = response.headers.get('location') || '';
+	const cacheStatus = response.headers.get('cf-cache-status') || '';
+	const cfRay = response.headers.get('cf-ray') || '';
+	const server = response.headers.get('server') || '';
+	let bodySnippet = '';
+	try {
+		const raw = await response.clone().text();
+		bodySnippet = raw.slice(0, maxSnippetLength);
+	} catch {
+		bodySnippet = '';
+	}
+	return {
+		status: response.status,
+		statusText: response.statusText || '',
+		finalUrl: response.url || '',
+		contentType,
+		locationHeader,
+		cacheStatus,
+		cfRay,
+		server,
+		bodySnippet,
+	};
+};
+
+const isCloudflare1042Body = (value: string): boolean => /error code:\s*1042/i.test(value);
+
 const discoverWebmentionEndpoint = async (
 	targetUrl: string,
 	timeoutMs = 6000,
@@ -965,6 +1006,11 @@ const discoverWebmentionEndpoint = async (
 			backendOptions
 		);
 		if (!response.ok) {
+			const fetchDebug = await collectFetchDebugInfo(response, 1200);
+			console.log('webmention target endpoint discovery fetch failed', {
+				targetUrl,
+				fetchDebug,
+			});
 			throw new Error(`Target fetch failed: HTTP ${response.status}`);
 		}
 		const finalTargetUrl = response.url || targetUrl;
@@ -974,6 +1020,12 @@ const discoverWebmentionEndpoint = async (
 		const html = await response.text();
 		const endpointFromHtml = resolveEndpointFromHtml(html, finalTargetUrl);
 		if (endpointFromHtml) return endpointFromHtml;
+		console.log('webmention target endpoint discovery no endpoint found', {
+			targetUrl,
+			finalTargetUrl,
+			linkHeader: linkHeader || null,
+			htmlSnippet: html.slice(0, 1200),
+		});
 		throw new Error('No webmention endpoint found on target');
 	} finally {
 		clearTimeout(timeoutId);
@@ -1025,6 +1077,7 @@ const ensureSourcePageReadyForWebmention = async (
 				backendOptions
 			);
 			if (response.ok) {
+				const fetchDebug = await collectFetchDebugInfo(response, 1200);
 				const html = await response.text().catch(() => '');
 				const { matched, resolvedHrefs, rawHrefs } = collectSourceAnchorDetails(html);
 				console.log('webmention source readiness check', {
@@ -1033,6 +1086,7 @@ const ensureSourcePageReadyForWebmention = async (
 					targetUrl,
 					responseStatus: response.status,
 					finalSourceUrl: response.url || sourceUrl,
+					fetchDebug,
 					matched,
 					resolvedHrefs: resolvedHrefs.slice(0, 12),
 					rawHrefs: rawHrefs.slice(0, 12),
@@ -1044,12 +1098,25 @@ const ensureSourcePageReadyForWebmention = async (
 					return;
 				}
 			} else {
+				const fetchDebug = await collectFetchDebugInfo(response, 1200);
+				if (isCloudflare1042Body(fetchDebug.bodySnippet)) {
+					console.log('webmention source readiness check bypassed due to Cloudflare 1042', {
+						attempt,
+						sourceUrl,
+						targetUrl,
+						responseStatus: response.status,
+						finalSourceUrl: response.url || sourceUrl,
+						fetchDebug,
+					});
+					return;
+				}
 				console.log('webmention source readiness check', {
 					attempt,
 					sourceUrl,
 					targetUrl,
 					responseStatus: response.status,
 					finalSourceUrl: response.url || sourceUrl,
+					fetchDebug,
 					matched: false,
 					reason: 'source fetch was not OK',
 				});
