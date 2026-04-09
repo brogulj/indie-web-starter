@@ -25,7 +25,7 @@ export const PostsTemplate = /* html */ `
 
     <section class="flex flex-wrap gap-x-4 gap-y-1 rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-600">
       <p><strong>Status:</strong> {{status}}</p>
-      <p><strong>Published:</strong> {{data.publishedAt}}{{^data.publishedAt}}-{{/data.publishedAt}}</p>
+      <p><strong>Published:</strong> {{publishedAt}}{{^publishedAt}}-{{/publishedAt}}</p>
       <p><strong>Updated:</strong> {{updatedAt}}</p>
     </section>
 

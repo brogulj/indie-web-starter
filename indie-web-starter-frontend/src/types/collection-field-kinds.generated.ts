@@ -8,8 +8,6 @@ export const collectionFieldKindsMap = {
     "content": "richtext",
     "featuredImage": "media",
     "author": "string",
-    "publishedAt": "datetime",
-    "status": "select",
     "tags": "string"
   },
   "events": {
@@ -28,9 +26,7 @@ export const collectionFieldKindsMap = {
     "runtimeMinutes": "number",
     "content": "richtext",
     "rating": "number",
-    "featuredImage": "media",
-    "publishedAt": "datetime",
-    "status": "select"
+    "featuredImage": "media"
   },
   "music-reviews": {
     "releaseType": "select",
@@ -41,13 +37,25 @@ export const collectionFieldKindsMap = {
     "label": "string",
     "genres": "string",
     "releaseDate": "datetime",
-    "featuredImage": "media",
-    "publishedAt": "datetime",
-    "status": "select"
+    "featuredImage": "media"
+  },
+  "news": {
+    "title": "string",
+    "content": "richtext",
+    "publish_date": "date",
+    "author": "string",
+    "category": "string"
   },
   "outfits": {
     "mainImage": "media",
     "pieces": "object-array"
+  },
+  "pages": {
+    "title": "string",
+    "content": "richtext",
+    "slug": "slug",
+    "meta_description": "string",
+    "featured_image": "media"
   },
   "posts": {
     "caption": "textarea",
@@ -81,8 +89,14 @@ export const collectionRequiredFieldsMap = {
     "releaseTitle",
     "rating"
   ],
+  "news": [
+    "title"
+  ],
   "outfits": [
     "mainImage"
+  ],
+  "pages": [
+    "title"
   ],
   "posts": [
     "title",
@@ -110,27 +124,7 @@ export const collectionSchemaPropertiesMap = {
     },
     "author": {
       "type": "string",
-      "title": "Author",
-      "required": true
-    },
-    "publishedAt": {
-      "type": "datetime",
-      "title": "Published Date"
-    },
-    "status": {
-      "type": "select",
-      "title": "Status",
-      "enum": [
-        "draft",
-        "published",
-        "archived"
-      ],
-      "enumLabels": [
-        "Draft",
-        "Published",
-        "Archived"
-      ],
-      "default": "draft"
+      "title": "Author"
     },
     "tags": {
       "type": "string",
@@ -211,25 +205,6 @@ export const collectionSchemaPropertiesMap = {
     "featuredImage": {
       "type": "media",
       "title": "Featured Image"
-    },
-    "publishedAt": {
-      "type": "datetime",
-      "title": "Published Date"
-    },
-    "status": {
-      "type": "select",
-      "title": "Status",
-      "enum": [
-        "draft",
-        "published",
-        "archived"
-      ],
-      "enumLabels": [
-        "Draft",
-        "Published",
-        "Archived"
-      ],
-      "default": "draft"
     }
   },
   "music-reviews": {
@@ -284,25 +259,36 @@ export const collectionSchemaPropertiesMap = {
     "featuredImage": {
       "type": "media",
       "title": "Featured Image"
+    }
+  },
+  "news": {
+    "title": {
+      "type": "string",
+      "title": "Title",
+      "required": true
     },
-    "publishedAt": {
-      "type": "datetime",
-      "title": "Published Date"
+    "content": {
+      "type": "string",
+      "title": "Content",
+      "format": "richtext"
     },
-    "status": {
-      "type": "select",
-      "title": "Status",
+    "publish_date": {
+      "type": "string",
+      "title": "Publish Date",
+      "format": "date"
+    },
+    "author": {
+      "type": "string",
+      "title": "Author"
+    },
+    "category": {
+      "type": "string",
+      "title": "Category",
       "enum": [
-        "draft",
-        "published",
-        "archived"
-      ],
-      "enumLabels": [
-        "Draft",
-        "Published",
-        "Archived"
-      ],
-      "default": "draft"
+        "technology",
+        "business",
+        "general"
+      ]
     }
   },
   "outfits": {
@@ -330,6 +316,31 @@ export const collectionSchemaPropertiesMap = {
           }
         }
       }
+    }
+  },
+  "pages": {
+    "title": {
+      "type": "string",
+      "title": "Title",
+      "required": true
+    },
+    "content": {
+      "type": "string",
+      "title": "Content",
+      "format": "richtext"
+    },
+    "slug": {
+      "type": "slug",
+      "title": "Slug"
+    },
+    "meta_description": {
+      "type": "string",
+      "title": "Meta Description"
+    },
+    "featured_image": {
+      "type": "string",
+      "title": "Featured Image",
+      "format": "media"
     }
   },
   "posts": {

@@ -16,15 +16,13 @@ export type CollectionDefinition = {
 	};
 };
 
-export const COLLECTION_COUNT = 6;
+export const COLLECTION_COUNT = 8;
 
 export interface BlogPostsCollectionData {
 	"excerpt"?: string;
 	"content": RichText;
 	"featuredImage"?: string;
 	"author": string;
-	"publishedAt"?: string;
-	"status"?: "draft" | "published" | "archived";
 	"tags"?: string;
 }
 
@@ -33,8 +31,6 @@ export interface BlogPostsCollectionFieldKinds {
 	"content": "richtext";
 	"featuredImage": "media";
 	"author": "string";
-	"publishedAt": "datetime";
-	"status": "select";
 	"tags": "string";
 }
 
@@ -66,8 +62,6 @@ export interface MovieReviewsCollectionData {
 	"content"?: RichText;
 	"rating": number;
 	"featuredImage"?: string;
-	"publishedAt"?: string;
-	"status"?: "draft" | "published" | "archived";
 }
 
 export interface MovieReviewsCollectionFieldKinds {
@@ -78,8 +72,6 @@ export interface MovieReviewsCollectionFieldKinds {
 	"content": "richtext";
 	"rating": "number";
 	"featuredImage": "media";
-	"publishedAt": "datetime";
-	"status": "select";
 }
 
 export interface MusicReviewsCollectionData {
@@ -92,8 +84,6 @@ export interface MusicReviewsCollectionData {
 	"genres"?: string;
 	"releaseDate"?: string;
 	"featuredImage"?: string;
-	"publishedAt"?: string;
-	"status"?: "draft" | "published" | "archived";
 }
 
 export interface MusicReviewsCollectionFieldKinds {
@@ -106,8 +96,22 @@ export interface MusicReviewsCollectionFieldKinds {
 	"genres": "string";
 	"releaseDate": "datetime";
 	"featuredImage": "media";
-	"publishedAt": "datetime";
-	"status": "select";
+}
+
+export interface NewsCollectionData {
+	"title": string;
+	"content"?: RichText;
+	"publish_date"?: string;
+	"author"?: string;
+	"category"?: "technology" | "business" | "general";
+}
+
+export interface NewsCollectionFieldKinds {
+	"title": "string";
+	"content": "richtext";
+	"publish_date": "date";
+	"author": "string";
+	"category": "string";
 }
 
 export interface OutfitsCollectionData {
@@ -124,6 +128,22 @@ export interface OutfitsCollectionFieldKinds {
 	"pieces": "object-array";
 }
 
+export interface PagesCollectionData {
+	"title": string;
+	"content"?: RichText;
+	"slug"?: string;
+	"meta_description"?: string;
+	"featured_image"?: string;
+}
+
+export interface PagesCollectionFieldKinds {
+	"title": "string";
+	"content": "richtext";
+	"slug": "slug";
+	"meta_description": "string";
+	"featured_image": "media";
+}
+
 export interface PostsCollectionData {
 	"caption": string;
 	"media"?: string[];
@@ -134,14 +154,16 @@ export interface PostsCollectionFieldKinds {
 	"media": "media-array";
 }
 
-export type CollectionName = "blog-posts" | "events" | "movie-reviews" | "music-reviews" | "outfits" | "posts";
+export type CollectionName = "blog-posts" | "events" | "movie-reviews" | "music-reviews" | "news" | "outfits" | "pages" | "posts";
 
 export interface CollectionDataMap {
 	"blog-posts": BlogPostsCollectionData;
 	"events": EventsCollectionData;
 	"movie-reviews": MovieReviewsCollectionData;
 	"music-reviews": MusicReviewsCollectionData;
+	"news": NewsCollectionData;
 	"outfits": OutfitsCollectionData;
+	"pages": PagesCollectionData;
 	"posts": PostsCollectionData;
 }
 
@@ -152,7 +174,9 @@ export interface CollectionFieldKindsMap {
 	"events": EventsCollectionFieldKinds;
 	"movie-reviews": MovieReviewsCollectionFieldKinds;
 	"music-reviews": MusicReviewsCollectionFieldKinds;
+	"news": NewsCollectionFieldKinds;
 	"outfits": OutfitsCollectionFieldKinds;
+	"pages": PagesCollectionFieldKinds;
 	"posts": PostsCollectionFieldKinds;
 }
 

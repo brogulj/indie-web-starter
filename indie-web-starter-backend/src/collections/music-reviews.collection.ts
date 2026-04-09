@@ -61,17 +61,6 @@ export default {
         type: "media",
         title: "Featured Image",
       },
-      publishedAt: {
-        type: "datetime",
-        title: "Published Date",
-      },
-      status: {
-        type: "select",
-        title: "Status",
-        enum: ["draft", "published", "archived"],
-        enumLabels: ["Draft", "Published", "Archived"],
-        default: "draft",
-      },
     },
     required: [
       "title",
@@ -83,14 +72,7 @@ export default {
     ],
   },
 
-  listFields: [
-    "title",
-    "releaseType",
-    "artistName",
-    "rating",
-    "status",
-    "publishedAt",
-  ],
+  listFields: ["title", "releaseType", "artistName", "rating"],
   searchFields: [
     "title",
     "artistName",

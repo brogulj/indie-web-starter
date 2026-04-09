@@ -1897,7 +1897,7 @@ const toEditorModel = (item?: DashboardContentItem): EditorViewModel => {
 			collectionRouteParam: '',
 			title: '',
 			slug: '',
-			status: 'draft',
+			status: 'published',
 			dataJson: '{\n  "title": "",\n  "content": ""\n}',
 		};
 	}
@@ -2099,7 +2099,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 		const formData = await c.req.formData();
 		const title = String(formData.get('title') ?? '').trim();
 		const slug = normalizeSlug(String(formData.get('slug') ?? ''));
-		const status = parseContentStatus(String(formData.get('status') ?? 'draft'));
+		const status = parseContentStatus(String(formData.get('status') ?? 'published'));
 		const rawDataJson = String(formData.get('dataJson') ?? '');
 		const parsed = parseDataFromForm(formData);
 		const legacyCollectionId = String(formData.get('collectionId') ?? '').trim();
@@ -2201,7 +2201,7 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 		const formData = await c.req.formData();
 		const title = String(formData.get('title') ?? '').trim();
 		const slug = normalizeSlug(String(formData.get('slug') ?? ''));
-		const status = parseContentStatus(String(formData.get('status') ?? 'draft'));
+		const status = parseContentStatus(String(formData.get('status') ?? 'published'));
 		const rawDataJson = String(formData.get('dataJson') ?? '');
 		const parsed = parseDataFromForm(formData);
 		const collectionOptions = await loadCollectionOptionsSafe(backendOptions);

@@ -4,7 +4,9 @@ import { BlogPostsArchiveTemplate } from './blog-posts';
 import { EventsArchiveTemplate } from './events';
 import { MovieReviewsArchiveTemplate } from './movie-reviews';
 import { MusicReviewsArchiveTemplate } from './music-reviews';
+import { NewsArchiveTemplate } from './news';
 import { OutfitsArchiveTemplate } from './outfits';
+import { PagesArchiveTemplate } from './pages';
 import { PostsArchiveTemplate } from './posts';
 
 export const collectionArchiveTemplates: Record<string, string> = {
@@ -12,7 +14,9 @@ export const collectionArchiveTemplates: Record<string, string> = {
 	'events': EventsArchiveTemplate,
 	'movie-reviews': MovieReviewsArchiveTemplate,
 	'music-reviews': MusicReviewsArchiveTemplate,
+	'news': NewsArchiveTemplate,
 	'outfits': OutfitsArchiveTemplate,
+	'pages': PagesArchiveTemplate,
 	'posts': PostsArchiveTemplate,
 };
 

@@ -50,17 +50,6 @@ export default {
         type: "media",
         title: "Featured Image",
       },
-      publishedAt: {
-        type: "datetime",
-        title: "Published Date",
-      },
-      status: {
-        type: "select",
-        title: "Status",
-        enum: ["draft", "published", "archived"],
-        enumLabels: ["Draft", "Published", "Archived"],
-        default: "draft",
-      },
     },
     required: ["title", "slug", "rating"],
   },

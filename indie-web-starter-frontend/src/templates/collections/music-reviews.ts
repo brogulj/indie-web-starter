@@ -31,8 +31,8 @@ export const MusicReviewsTemplate = /* html */ `
       <p><strong>Label:</strong> {{data.label}}{{^data.label}}-{{/data.label}}</p>
       <p><strong>Genres:</strong> {{data.genres}}{{^data.genres}}-{{/data.genres}}</p>
       <p><strong>Release Date:</strong> {{data.releaseDate}}{{^data.releaseDate}}-{{/data.releaseDate}}</p>
-      <p><strong>Published:</strong> {{data.publishedAt}}{{^data.publishedAt}}-{{/data.publishedAt}}</p>
-      <p><strong>Status:</strong> {{data.status}}{{^data.status}}{{status}}{{/data.status}}</p>
+      <p><strong>Published:</strong> {{publishedAt}}{{^publishedAt}}-{{/publishedAt}}</p>
+      <p><strong>Status:</strong> {{status}}</p>
     </section>
 
     {{#data.contentHtml}}

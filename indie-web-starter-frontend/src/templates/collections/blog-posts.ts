@@ -31,8 +31,8 @@ export const BlogPostsTemplate = /* html */ `
 
     <section class="grid gap-2 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700 sm:grid-cols-2">
       <p><strong>Author:</strong> {{data.author}}{{^data.author}}{{siteAuthorName}}{{/data.author}}</p>
-      <p><strong>Published:</strong> {{data.publishedAt}}{{^data.publishedAt}}-{{/data.publishedAt}}</p>
-      <p><strong>Status:</strong> {{data.status}}{{^data.status}}{{status}}{{/data.status}}</p>
+      <p><strong>Published:</strong> {{publishedAt}}{{^publishedAt}}-{{/publishedAt}}</p>
+      <p><strong>Status:</strong> {{status}}</p>
       <p><strong>Tags:</strong> {{data.tags}}{{^data.tags}}-{{/data.tags}}</p>
     </section>
 

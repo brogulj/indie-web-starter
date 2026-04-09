@@ -33,18 +33,6 @@ export default {
       author: {
         type: "string",
         title: "Author",
-        required: true,
-      },
-      publishedAt: {
-        type: "datetime",
-        title: "Published Date",
-      },
-      status: {
-        type: "select",
-        title: "Status",
-        enum: ["draft", "published", "archived"],
-        enumLabels: ["Draft", "Published", "Archived"],
-        default: "draft",
       },
       tags: {
         type: "string",

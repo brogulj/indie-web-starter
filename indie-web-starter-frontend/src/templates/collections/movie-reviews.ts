@@ -19,8 +19,8 @@ export const MovieReviewsTemplate = /* html */ `
         <p><strong>Release Year:</strong> {{data.releaseYear}}{{^data.releaseYear}}-{{/data.releaseYear}}</p>
         <p><strong>Runtime:</strong> {{data.runtimeMinutes}}{{#data.runtimeMinutes}} min{{/data.runtimeMinutes}}{{^data.runtimeMinutes}}-{{/data.runtimeMinutes}}</p>
         <p><strong>Genres:</strong> {{data.genres}}{{^data.genres}}-{{/data.genres}}</p>
-        <p><strong>Published:</strong> {{data.publishedAt}}{{^data.publishedAt}}-{{/data.publishedAt}}</p>
-        <p><strong>Status:</strong> {{data.status}}{{^data.status}}{{status}}{{/data.status}}</p>
+        <p><strong>Published:</strong> {{publishedAt}}{{^publishedAt}}-{{/publishedAt}}</p>
+        <p><strong>Status:</strong> {{status}}</p>
       </div>
     </section>
 
