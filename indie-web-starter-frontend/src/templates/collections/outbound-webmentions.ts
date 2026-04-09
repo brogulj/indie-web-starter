@@ -36,9 +36,9 @@ export const OutboundWebmentionsTemplate = /* html */ `
 
     {{#isReply}}
     {{#data.commentText}}
-    <section class="e-content space-y-2 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-800">
+    <section class="space-y-2 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-800">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-700">Reply Text</h2>
-      <p class="whitespace-pre-wrap break-words">{{data.commentText}}</p>
+      <p class="e-content whitespace-pre-wrap break-words">{{data.commentText}}</p>
     </section>
     {{/data.commentText}}
     {{/isReply}}

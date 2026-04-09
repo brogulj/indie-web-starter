@@ -7,6 +7,14 @@ export const base = (content: string) => /* html */ `
   <title>{{title}}</title>
   <link rel="webmention" href="{{webmentionEndpoint}}{{^webmentionEndpoint}}/webmention{{/webmentionEndpoint}}">
   <link rel="stylesheet" href="/output.css">
+  <style>
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),
+    textarea,
+    select {
+      font-size: 16px !important;
+      line-height: 1.5;
+    }
+  </style>
 </head>
 <body class="bg-white text-black">
   <header class="mx-auto w-full max-w-5xl lg:px-4 lg:py-6 sticky top-0 z-10">
