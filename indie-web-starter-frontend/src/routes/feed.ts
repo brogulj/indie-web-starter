@@ -295,6 +295,7 @@ export const registerFeedRoutes = (app: Hono): void => {
 					for (const item of items) {
 						const data = item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : null;
 						if (!data) continue;
+						const itemRecord = item as Record<string, unknown>;
 						const mentionType = typeof data.mentionType === 'string' ? data.mentionType.toLowerCase() : '';
 						const moderationStatus = typeof data.status === 'string' ? data.status.toLowerCase() : '';
 						const targetCollection = typeof data.targetCollection === 'string' ? data.targetCollection : '';
@@ -325,7 +326,17 @@ export const registerFeedRoutes = (app: Hono): void => {
 							authorUrl,
 							authorPhoto: firstString(typeof data.authorPhoto === 'string' ? data.authorPhoto : ''),
 							contentText,
-							publishedAt: firstString(typeof data.publishedAt === 'string' ? data.publishedAt : ''),
+							publishedAt: firstString(
+								typeof data.publishedAt === 'string' ? data.publishedAt : '',
+								typeof data.updatedAt === 'string' ? data.updatedAt : '',
+								typeof data.updated_at === 'string' ? data.updated_at : '',
+								typeof data.createdAt === 'string' ? data.createdAt : '',
+								typeof data.created_at === 'string' ? data.created_at : '',
+								typeof item.updatedAt === 'string' ? item.updatedAt : '',
+								typeof itemRecord.updated_at === 'string' ? itemRecord.updated_at : '',
+								typeof item.createdAt === 'string' ? item.createdAt : '',
+								typeof itemRecord.created_at === 'string' ? itemRecord.created_at : ''
+							),
 							sourceUrl,
 						};
 						if (isSelfReply && !reply.authorName) {

@@ -1077,6 +1077,21 @@ const extractRawTag = (xml: string, tagName: string): string => {
 	return match?.[1] ? unwrapCdata(match[1]) : '';
 };
 
+const normalizeReplyPublishedAt = (value: string): string => {
+	const raw = String(value || '').trim();
+	if (!raw) return '';
+	if (/^\d+$/.test(raw)) {
+		const numeric = Number(raw);
+		if (Number.isFinite(numeric)) {
+			const epochMs = numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+			const parsed = new Date(epochMs);
+			return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+		}
+	}
+	const parsed = new Date(raw);
+	return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+};
+
 const parseEmbeddedRepliesFromFeedContent = (contentHtml: string, baseUrl: string): InboundReplyRecord[] => {
 	const sectionMatch = contentHtml.match(/<section\b[\s\S]*?<h3[^>]*>\s*Replies\s*<\/h3>[\s\S]*?<\/section>/i);
 	if (!sectionMatch?.[0]) return [];
@@ -1096,6 +1111,10 @@ const parseEmbeddedRepliesFromFeedContent = (contentHtml: string, baseUrl: strin
 		const sourceUrlRaw = sourceLinkMatch?.[1] || '';
 
 		const authorPhotoRaw = itemHtml.match(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i)?.[1] || '';
+		const timeDateTimeRaw = itemHtml.match(/<time\b[^>]*\bdatetime=["']([^"']+)["'][^>]*>/i)?.[1] || '';
+		const timeInnerText = stripTags(itemHtml.match(/<time\b[^>]*>([\s\S]*?)<\/time>/i)?.[1] || '').trim();
+		const headerSpanText = stripTags(itemHtml.match(/<div\b[^>]*>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>[\s\S]*?<\/div>/i)?.[1] || '').trim();
+		const publishedAt = normalizeReplyPublishedAt(timeDateTimeRaw || timeInnerText || headerSpanText);
 		const paragraphs = Array.from(itemHtml.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)).map((match) =>
 			stripTags(match[1] || '').trim()
 		);
@@ -1107,7 +1126,7 @@ const parseEmbeddedRepliesFromFeedContent = (contentHtml: string, baseUrl: strin
 			authorUrl: authorAnchorHref ? resolveUrlWithBase(authorAnchorHref, baseUrl) : '',
 			authorPhoto: authorPhotoRaw ? resolveUrlWithBase(authorPhotoRaw, baseUrl) : '',
 			contentText,
-			publishedAt: '',
+			publishedAt,
 			sourceUrl: sourceUrlRaw ? resolveUrlWithBase(sourceUrlRaw, baseUrl) : '',
 		});
 	}
@@ -2343,11 +2362,6 @@ const mapFollowingFeedItemsForDisplay = (
 	inboundRepliesByTarget = new Map<string, InboundReplyRecord[]>(),
 	commentAuthorName = 'You'
 ) => {
-	const selfReplyHosts = new Set(
-		Array.from(outboundByTarget.values())
-			.map((record) => toHost(record.sourceUrl || ''))
-			.filter((host) => host.length > 0)
-	);
 	return items.map((item) => {
 		let normalizedTarget = item.url;
 		let normalizedTargetNoQuery = item.url;
@@ -2374,17 +2388,25 @@ const mapFollowingFeedItemsForDisplay = (
 			isOwn: true,
 		}));
 		const ownCommentTexts = new Set(previousComments.map((entry) => entry.text.trim().toLowerCase()).filter((entry) => entry.length > 0));
+		const outboundSourceUrl = String(outbound?.sourceUrl || '').trim();
+		const outboundSourceHost = toHost(outboundSourceUrl);
 		const inboundRepliesFromFeed = (item.inboundRepliesFromFeed || [])
 			.filter((entry) => {
 				const normalizedText = entry.contentText.trim().toLowerCase();
-				return normalizedText.length > 0;
+				if (normalizedText.length === 0) return false;
+				if (ownCommentTexts.has(normalizedText)) return false;
+				if (entry.sourceUrl && outboundSourceUrl && areUrlsEquivalent(entry.sourceUrl, outboundSourceUrl)) return false;
+				const sourceHost = toHost(entry.sourceUrl || '');
+				const authorHost = toHost(entry.authorUrl || '');
+				if (outboundSourceHost && (sourceHost === outboundSourceHost || authorHost === outboundSourceHost)) return false;
+				return true;
 			})
 			.map((entry) => ({
 				author: toReplyAuthorLabel(entry.authorName || '', entry.authorUrl, entry.sourceUrl),
 				authorUrl: entry.authorUrl || '',
 				authorPhoto: entry.authorPhoto || '',
 				text: entry.contentText,
-				displayDate: toDisplayDateTime(entry.publishedAt),
+				displayDate: toDisplayDateTime(entry.publishedAt || item.publishedAt),
 				sourceUrl: entry.sourceUrl || '',
 				isOwn: false,
 			}));
@@ -2404,7 +2426,7 @@ const mapFollowingFeedItemsForDisplay = (
 					(!entry.sourceUrl || areUrlsEquivalent(entry.sourceUrl, outbound?.sourceUrl || ''))
 						? outboundReplyText
 						: entry.contentText,
-				displayDate: toDisplayDateTime(entry.publishedAt),
+				displayDate: toDisplayDateTime(entry.publishedAt || item.publishedAt),
 				sourceUrl: entry.sourceUrl || '',
 				isOwn: false,
 			}))
@@ -2412,7 +2434,9 @@ const mapFollowingFeedItemsForDisplay = (
 				const normalizedText = entry.text.trim().toLowerCase();
 				const sourceHost = toHost(entry.sourceUrl || '');
 				const authorHost = toHost(entry.authorUrl || '');
-				const isSelfReply = (sourceHost && selfReplyHosts.has(sourceHost)) || (authorHost && selfReplyHosts.has(authorHost));
+				const isSelfReply =
+					(entry.sourceUrl && outboundSourceUrl && areUrlsEquivalent(entry.sourceUrl, outboundSourceUrl)) ||
+					(outboundSourceHost && (sourceHost === outboundSourceHost || authorHost === outboundSourceHost));
 				if (normalizedText.length === 0) return false;
 				if (ownCommentTexts.has(normalizedText)) return false;
 				if (isSelfReply) return false;

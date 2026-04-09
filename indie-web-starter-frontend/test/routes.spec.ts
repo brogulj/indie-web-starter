@@ -747,6 +747,7 @@ describe('routes', () => {
 		expect(body).toContain('<h3>Replies</h3>');
 		expect(body).toContain('This is my real reply text');
 		expect(body).not.toContain('Reply Text');
+		expect(body).toContain('Fri, 02 Jan 2026');
 		expect(body).not.toContain('Thu, 01 Jan 1970 00:00:00 GMT');
 		expect(body).not.toContain('<category>webmentions</category>');
 	});

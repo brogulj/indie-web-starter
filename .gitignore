@@ -27,4 +27,4 @@ sonicjs/
 !**/.env.example
 !**/.dev.vars.example
 
-wrangler.jsonc
+**/wrangler.jsonc
