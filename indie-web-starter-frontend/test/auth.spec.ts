@@ -164,7 +164,8 @@ describe('auth routes', () => {
 		const body = await response.text();
 
 		expect(response.status).toBe(404);
-		expect(body).toContain('Logout');
+		expect(body).toContain('Dashboard');
+		expect(body).not.toContain('>Login<');
 	});
 
 	it('creates content from dashboard form and redirects to the new editor page', async () => {
@@ -318,6 +319,24 @@ describe('auth routes', () => {
 										active: true,
 									},
 								},
+								{
+									id: 'wm-1',
+									collectionId: 'webmentions-id',
+									title: 'Approved reply',
+									slug: 'approved-reply',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {
+										mentionType: 'reply',
+										status: 'approved',
+										targetUrl: 'https://example.com/post-one',
+										contentText: 'Reply Text',
+										sourceDomain: 'localhost',
+										sourceUrl: 'https://example.com/replies/1',
+										publishedAt: '2026-01-03T00:00:00.000Z',
+									},
+								},
 							],
 						}),
 					);
@@ -336,8 +355,570 @@ describe('auth routes', () => {
 		expect(body).toContain('Following source saved.');
 		expect(body).toContain('Example Site');
 		expect(body).toContain('https://example.com/feed.xml');
-		expect(body).toContain('Logout');
+		expect(body).toContain('Dashboard');
 		expect(body).not.toContain('>Login<');
+		expect(body).toContain('Recommended RSS Feeds');
+		expect(body).toContain('name="recFilter"');
+		expect(body).toContain('name="recQuery"');
+		expect(body).toContain('Add Feed');
+	});
+
+	it('renders following feed with responsive card layout and progressive disclosure sections', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return Promise.resolve(
+						jsonResponse({
+							user: {
+								id: 'u1',
+								email: 'admin@sonicjs.com',
+								username: 'admin',
+								firstName: 'Admin',
+								lastName: 'User',
+								role: 'admin',
+							},
+						}),
+					);
+				}
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [
+								{ id: 'following-id', name: 'following-sources', display_name: 'Following Sources', schema: { properties: {} } },
+								{ id: 'outbound-id', name: 'outbound-webmentions', display_name: 'Outbound Webmentions', schema: { properties: {} } },
+								{ id: 'webmentions-id', name: 'webmentions', display_name: 'Webmentions', schema: { properties: {} } },
+							],
+						}),
+					);
+				}
+				if (url.includes('/api/content?')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'follow-1',
+									collectionId: 'following-id',
+									title: 'Example Site',
+									slug: 'example-site',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {
+										siteUrl: 'https://example.com',
+										feedUrl: 'https://example.com/feed.xml',
+										active: true,
+									},
+								},
+							],
+						}),
+					);
+				}
+				if (url === 'https://example.com/feed.xml') {
+					return Promise.resolve(
+						new Response(
+							`<?xml version="1.0" encoding="UTF-8"?>
+							<rss version="2.0">
+								<channel>
+									<title>Example Feed</title>
+									<item>
+										<title>Post One</title>
+										<link>https://example.com/post-one</link>
+										<description>Hello from the feed.</description>
+										<pubDate>Wed, 01 Jan 2026 00:00:00 GMT</pubDate>
+										<category>Updates</category>
+									</item>
+								</channel>
+							</rss>`,
+							{
+								status: 200,
+								headers: { 'content-type': 'application/rss+xml' },
+							},
+						),
+					);
+				}
+				if (url === 'https://example.com/post-one') {
+					return Promise.resolve(
+						new Response('<html><head><meta property="og:description" content="Linked page summary" /></head><body>Post one</body></html>', {
+							status: 200,
+							headers: { 'content-type': 'text/html' },
+						}),
+					);
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/dashboard/following/feed', {
+			headers: { cookie: 'auth_token=jwt-token' },
+		});
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('Following Feed');
+		expect(body).toContain('Latest items from your followed sites and feeds.');
+		expect(body).toContain('max-w-4xl');
+		expect(body).toContain('sm:grid-cols-[minmax(0,1fr)_220px]');
+		expect(body).not.toContain('<details data-conversation-details');
+		expect(body).not.toContain('<div class="mt-4 space-y-2" data-wm-actions>');
+	});
+
+	it('shows feed actions only when target page exposes a webmention endpoint', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return Promise.resolve(
+						jsonResponse({
+							user: {
+								id: 'u1',
+								email: 'admin@sonicjs.com',
+								username: 'admin',
+								firstName: 'Admin',
+								lastName: 'User',
+								role: 'admin',
+							},
+						}),
+					);
+				}
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [
+								{ id: 'following-id', name: 'following-sources', display_name: 'Following Sources', schema: { properties: {} } },
+								{ id: 'outbound-id', name: 'outbound-webmentions', display_name: 'Outbound Webmentions', schema: { properties: {} } },
+								{ id: 'webmentions-id', name: 'webmentions', display_name: 'Webmentions', schema: { properties: {} } },
+							],
+						}),
+					);
+				}
+				if (url.includes('/api/content?')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'follow-1',
+									collectionId: 'following-id',
+									title: 'Example Site',
+									slug: 'example-site',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {
+										siteUrl: 'https://example.com',
+										feedUrl: 'https://example.com/feed.xml',
+										active: true,
+									},
+								},
+							],
+						}),
+					);
+				}
+				if (url === 'https://example.com/feed.xml') {
+					return Promise.resolve(
+						new Response(
+							`<?xml version="1.0" encoding="UTF-8"?>
+							<rss version="2.0">
+								<channel>
+									<title>Example Feed</title>
+									<item>
+										<title>Post One</title>
+										<link>https://example.com/post-one</link>
+										<description>Hello from the feed.</description>
+										<pubDate>Wed, 01 Jan 2026 00:00:00 GMT</pubDate>
+										<content:encoded><![CDATA[
+											<p>Hello from the feed.</p>
+											<section>
+												<h3>Replies</h3>
+												<ul>
+													<li>
+														<div>
+															<a href="https://example.com/replies/1"><strong>Replied to Post One</strong></a>
+														</div>
+														<p>This is a previous reply from feed content.</p>
+														<p><a href="https://example.com/replies/1">View original reply</a></p>
+													</li>
+												</ul>
+											</section>
+										]]></content:encoded>
+									</item>
+								</channel>
+							</rss>`,
+							{
+								status: 200,
+								headers: { 'content-type': 'application/rss+xml' },
+							},
+						),
+					);
+				}
+				if (url === 'https://example.com/post-one') {
+					return Promise.resolve(
+						new Response('<html><head><link rel="webmention" href="https://example.com/webmention" /></head><body>Post one</body></html>', {
+							status: 200,
+							headers: { 'content-type': 'text/html' },
+						}),
+					);
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/dashboard/following/feed', {
+			headers: { cookie: 'auth_token=jwt-token' },
+		});
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('data-wm-actions');
+		expect(body).toContain('Quick response');
+		expect(body).toContain('data-comment-toggle');
+		expect(body).toContain('data-conversation-details');
+		expect(body).toContain('This is a previous reply from feed content.');
+		expect(body).toContain('example.com');
+		expect(body).not.toContain('Reply Text');
+		expect(body).not.toContain('>localhost<');
+		expect(body).not.toContain('Replied to Post One');
+	});
+
+	it('sorts following feed posts by published date descending', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return Promise.resolve(
+						jsonResponse({
+							user: {
+								id: 'u1',
+								email: 'admin@sonicjs.com',
+								username: 'admin',
+								firstName: 'Admin',
+								lastName: 'User',
+								role: 'admin',
+							},
+						}),
+					);
+				}
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [{ id: 'following-id', name: 'following-sources', display_name: 'Following Sources', schema: { properties: {} } }],
+						}),
+					);
+				}
+				if (url.includes('/api/content?')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'follow-1',
+									collectionId: 'following-id',
+									title: 'Example Site',
+									slug: 'example-site',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {
+										siteUrl: 'https://example.com',
+										feedUrl: 'https://example.com/feed.xml',
+										active: true,
+									},
+								},
+							],
+						}),
+					);
+				}
+				if (url === 'https://example.com/feed.xml') {
+					return Promise.resolve(
+						new Response(
+							`<?xml version="1.0" encoding="UTF-8"?>
+							<rss version="2.0">
+								<channel>
+									<title>Example Feed</title>
+									<item>
+										<title>Older Post</title>
+										<link>https://example.com/older-post</link>
+										<description>Older</description>
+										<pubDate>Wed, 08 Jan 2025 00:00:00 GMT</pubDate>
+									</item>
+									<item>
+										<title>Newer Post</title>
+										<link>https://example.com/newer-post</link>
+										<description>Newer</description>
+										<pubDate>Wed, 08 Apr 2026 21:17:57 GMT</pubDate>
+									</item>
+								</channel>
+							</rss>`,
+							{
+								status: 200,
+								headers: { 'content-type': 'application/rss+xml' },
+							},
+						),
+					);
+				}
+				if (url === 'https://example.com/older-post' || url === 'https://example.com/newer-post') {
+					return Promise.resolve(
+						new Response('<html><head></head><body>No endpoint</body></html>', {
+							status: 200,
+							headers: { 'content-type': 'text/html' },
+						}),
+					);
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/dashboard/following/feed', {
+			headers: { cookie: 'auth_token=jwt-token' },
+		});
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		const newerIndex = body.indexOf('Newer Post');
+		const olderIndex = body.indexOf('Older Post');
+		expect(newerIndex).toBeGreaterThanOrEqual(0);
+		expect(olderIndex).toBeGreaterThanOrEqual(0);
+		expect(newerIndex).toBeLessThan(olderIndex);
+	});
+
+	it('dedupes self-replies and replaces placeholder reply text with outbound comment text', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return Promise.resolve(
+						jsonResponse({
+							user: {
+								id: 'u1',
+								email: 'admin@sonicjs.com',
+								username: 'bruno.rogi',
+								firstName: 'Bruno',
+								lastName: 'Rogi',
+								role: 'admin',
+							},
+						}),
+					);
+				}
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [
+								{ id: 'following-id', name: 'following-sources', display_name: 'Following Sources', schema: { properties: {} } },
+								{ id: 'outbound-id', name: 'outbound-webmentions', display_name: 'Outbound Webmentions', schema: { properties: {} } },
+								{ id: 'webmentions-id', name: 'webmentions', display_name: 'Webmentions', schema: { properties: {} } },
+							],
+						}),
+					);
+				}
+				if (url.includes('/api/content?')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'follow-1',
+									collectionId: 'following-id',
+									title: 'Example Site',
+									slug: 'example-site',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {
+										siteUrl: 'https://example.com',
+										feedUrl: 'https://example.com/feed.xml',
+										active: true,
+									},
+								},
+								{
+									id: 'outbound-1',
+									collectionId: 'outbound-id',
+									title: 'Reply',
+									slug: 'webmention-reply-example-1',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:03:00.000Z',
+									data: {
+										targetUrl: 'https://example.com/post-one',
+										sourceUrl: 'https://example.com/outbound-webmentions/webmention-reply-example-1',
+										mentionType: 'reply',
+										deliveryStatus: 'sent',
+										commentText: 'komentar',
+										attemptedAt: '2026-01-03T00:03:00.000Z',
+									},
+								},
+								{
+									id: 'wm-1',
+									collectionId: 'webmentions-id',
+									title: 'Approved reply',
+									slug: 'approved-reply',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:04:00.000Z',
+									data: {
+										mentionType: 'reply',
+										status: 'approved',
+										targetUrl: 'https://example.com/post-one',
+										sourceUrl: 'https://example.com/outbound-webmentions/webmention-reply-example-1',
+										sourceDomain: 'localhost',
+										authorName: 'Replied to Naslov mog blog posta',
+										contentText: 'Reply Text',
+										publishedAt: '2026-01-03T00:04:00.000Z',
+									},
+								},
+							],
+						}),
+					);
+				}
+				if (url === 'https://example.com/feed.xml') {
+					return Promise.resolve(
+						new Response(
+							`<?xml version="1.0" encoding="UTF-8"?>
+							<rss version="2.0">
+								<channel>
+									<title>Example Feed</title>
+									<item>
+										<title>Post One</title>
+										<link>https://example.com/post-one</link>
+										<description>Hello from the feed.</description>
+										<pubDate>Wed, 01 Jan 2026 00:00:00 GMT</pubDate>
+									</item>
+								</channel>
+							</rss>`,
+							{
+								status: 200,
+								headers: { 'content-type': 'application/rss+xml' },
+							},
+						),
+					);
+				}
+				if (url === 'https://example.com/post-one') {
+					return Promise.resolve(
+						new Response('<html><head><link rel="webmention" href="https://example.com/webmention" /></head><body>Post one</body></html>', {
+							status: 200,
+							headers: { 'content-type': 'text/html' },
+						}),
+					);
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/dashboard/following/feed', {
+			headers: { cookie: 'auth_token=jwt-token' },
+		});
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('Conversation');
+		expect(body).toContain('komentar');
+		expect(body).not.toContain('Reply Text');
+		expect(body).not.toContain('Replied to Naslov mog blog posta');
+		expect(body).not.toContain('>localhost<');
+	});
+
+	it('renders image for local self-follow feed items when post content contains an image', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return Promise.resolve(
+						jsonResponse({
+							user: {
+								id: 'u1',
+								email: 'admin@sonicjs.com',
+								username: 'admin',
+								firstName: 'Admin',
+								lastName: 'User',
+								role: 'admin',
+							},
+						}),
+					);
+				}
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [
+								{ id: 'following-id', name: 'following-sources', display_name: 'Following Sources', schema: { properties: {} } },
+								{ id: 'posts-id', name: 'posts', display_name: 'Posts', schema: { properties: {} } },
+								{ id: 'outbound-id', name: 'outbound-webmentions', display_name: 'Outbound Webmentions', schema: { properties: {} } },
+								{ id: 'webmentions-id', name: 'webmentions', display_name: 'Webmentions', schema: { properties: {} } },
+							],
+						}),
+					);
+				}
+				if (url.includes('/api/content?')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'follow-1',
+									collectionId: 'following-id',
+									title: 'My Local Site',
+									slug: 'my-local-site',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {
+										siteUrl: 'http://localhost:8787',
+										feedUrl: 'http://localhost:8787/feed',
+										active: true,
+									},
+								},
+							],
+						}),
+					);
+				}
+				if (url === 'http://localhost:8787/feed') {
+					return Promise.resolve(
+						new Response(
+							`<?xml version="1.0" encoding="UTF-8"?>
+							<rss version="2.0">
+								<channel>
+									<title>Local Feed</title>
+									<item>
+										<title>Local post</title>
+										<link>http://localhost:8787/posts/local-post</link>
+										<description>Hello</description>
+										<pubDate>Wed, 08 Apr 2026 21:17:57 GMT</pubDate>
+										<enclosure url="http://localhost:8787/avatar.webp" type="image/webp" />
+									</item>
+								</channel>
+							</rss>`,
+							{
+								status: 200,
+								headers: { 'content-type': 'application/rss+xml' },
+							},
+						),
+					);
+				}
+				if (url === 'http://localhost:8787/posts/local-post') {
+					return Promise.resolve(
+						new Response('<html><head></head><body>Local post</body></html>', {
+							status: 200,
+							headers: { 'content-type': 'text/html' },
+						}),
+					);
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/dashboard/following/feed', {
+			headers: { cookie: 'auth_token=jwt-token', host: 'localhost:8787' },
+		});
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('src="http:&#x2F;&#x2F;localhost:8787&#x2F;avatar.webp"');
+		expect(body).toContain('Local post');
 	});
 
 	it('adds following source and redirects with followSaved query', async () => {
@@ -607,6 +1188,160 @@ describe('auth routes', () => {
 		expect(createdData.mentionType).toBe('reply');
 		expect(createdData.commentText).toBe('This is my reply comment.');
 		expect(createdData.mf2PropertyClass).toBe('u-in-reply-to');
+	});
+
+	it('renders redesigned dashboard overview with content-first sections', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return Promise.resolve(
+						jsonResponse({
+							user: {
+								id: 'u1',
+								email: 'admin@sonicjs.com',
+								username: 'admin',
+								firstName: 'Admin',
+								lastName: 'User',
+								role: 'admin',
+							},
+						}),
+					);
+				}
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [
+								{ id: 'blog-posts-collection-id', name: 'blog-posts', display_name: 'Blog Posts', schema: { properties: {} } },
+								{ id: 'following-id', name: 'following-sources', display_name: 'Following Sources', schema: { properties: {} } },
+								{ id: 'webmentions-id', name: 'webmentions', display_name: 'Webmentions', schema: { properties: {} } },
+							],
+						}),
+					);
+				}
+				if (url.includes('/api/content?')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'post-1',
+									collectionId: 'blog-posts-collection-id',
+									title: 'A post',
+									slug: 'a-post',
+									status: 'draft',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {},
+								},
+								{
+									id: 'follow-1',
+									collectionId: 'following-id',
+									title: 'Example',
+									slug: 'follow-example',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: { active: true, siteUrl: 'https://example.com' },
+								},
+								{
+									id: 'wm-1',
+									collectionId: 'webmentions-id',
+									title: 'Pending mention',
+									slug: 'pending-mention',
+									status: 'published',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {
+										status: 'pending',
+										sourceDomain: 'example.com',
+										mentionType: 'reply',
+										targetCollection: 'blog-posts',
+										targetSlug: 'a-post',
+									},
+								},
+							],
+						}),
+					);
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/dashboard', {
+			headers: { cookie: 'auth_token=jwt-token' },
+		});
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('Content Overview');
+		expect(body).toContain('Collections Overview');
+		expect(body).toContain('Secondary Operations');
+		expect(body).toContain('Webmention Moderation');
+		expect(body).toContain('New Content');
+		expect(body).toContain('Open Feed');
+		expect(body).toContain('Log Out');
+	});
+
+	it('renders collection list utility bar with search and status filters', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/auth/me')) {
+					return Promise.resolve(
+						jsonResponse({
+							user: {
+								id: 'u1',
+								email: 'admin@sonicjs.com',
+								username: 'admin',
+								firstName: 'Admin',
+								lastName: 'User',
+								role: 'admin',
+							},
+						}),
+					);
+				}
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [{ id: 'blog-posts-collection-id', name: 'blog-posts', display_name: 'Blog Posts', schema: { properties: {} } }],
+						}),
+					);
+				}
+				if (url.includes('/api/content?')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'post-1',
+									collectionId: 'blog-posts-collection-id',
+									title: 'A post',
+									slug: 'a-post',
+									status: 'published',
+									updatedAt: '2026-01-03T00:00:00.000Z',
+									data: {},
+								},
+							],
+						}),
+					);
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			}),
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/dashboard/blog-posts-collection-id', {
+			headers: { cookie: 'auth_token=jwt-token' },
+		});
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('Search title or slug');
+		expect(body).toContain('All statuses');
+		expect(body).toContain('View / Edit');
+		expect(body).toContain('Collection: Blog Posts');
 	});
 
 	it('approves webmention and trusts domain when requested', async () => {

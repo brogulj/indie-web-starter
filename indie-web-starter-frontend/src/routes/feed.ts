@@ -30,6 +30,8 @@ type ReplyComment = {
 	sourceUrl: string;
 };
 
+const isGenericReplyText = (value: string): boolean => String(value || '').trim().toLowerCase() === 'reply text';
+
 const xmlEscape = (value: string): string =>
 	value
 		.replace(/&/g, '&amp;')
@@ -270,6 +272,23 @@ export const registerFeedRoutes = (app: Hono): void => {
 			);
 			const feedProfileImage = configuredProfileImage ? resolveAbsoluteUrl(configuredProfileImage, origin) : '';
 			const statusFilter: CollectionFilter[] = [{ field: 'status', operator: 'equals', value: 'published' }];
+			const outboundReplyTextBySource = await sonicGetContent('outbound-webmentions', statusFilter, backendOptions)
+				.then((items) => {
+					const result = new Map<string, string>();
+					for (const item of items) {
+						const data = item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : null;
+						if (!data) continue;
+						const sourceUrl = firstString(typeof data.sourceUrl === 'string' ? data.sourceUrl : '');
+						const commentText = firstString(typeof data.commentText === 'string' ? data.commentText : '');
+						if (!sourceUrl || !commentText) continue;
+						result.set(sourceUrl, commentText);
+					}
+					return result;
+				})
+				.catch((error) => {
+					console.error('Failed to fetch outbound webmentions for reply text enrichment', error);
+					return new Map<string, string>();
+				});
 			const replyCommentsByTarget = await sonicGetContent('webmentions', statusFilter, backendOptions)
 				.then((items) => {
 					const result = new Map<string, ReplyComment[]>();
@@ -283,16 +302,19 @@ export const registerFeedRoutes = (app: Hono): void => {
 						const sourceDomain = typeof data.sourceDomain === 'string' ? data.sourceDomain.toLowerCase() : '';
 						const authorUrl = firstString(typeof data.authorUrl === 'string' ? data.authorUrl : '');
 						const sourceUrl = firstString(typeof data.sourceUrl === 'string' ? data.sourceUrl : '');
-						const contentText = firstString(
+						const rawContentText = firstString(
 							typeof data.contentText === 'string' ? data.contentText : '',
 							typeof data.content === 'string' ? stripHtml(data.content) : ''
 						);
+						const contentText =
+							isGenericReplyText(rawContentText) && outboundReplyTextBySource.get(sourceUrl)
+								? firstString(outboundReplyTextBySource.get(sourceUrl))
+								: rawContentText;
 						const isSelfReply =
 							sourceDomain === siteHost || toHost(authorUrl) === siteHost || toHost(sourceUrl) === siteHost;
 						if (mentionType !== 'reply' || moderationStatus !== 'approved' || !targetCollection || !targetSlug || !contentText) {
 							continue;
 						}
-						if (isSelfReply) continue;
 						const key = toTargetKey(targetCollection, targetSlug);
 						const reply: ReplyComment = {
 							authorName: firstString(
@@ -306,6 +328,9 @@ export const registerFeedRoutes = (app: Hono): void => {
 							publishedAt: firstString(typeof data.publishedAt === 'string' ? data.publishedAt : ''),
 							sourceUrl,
 						};
+						if (isSelfReply && !reply.authorName) {
+							reply.authorName = 'You';
+						}
 						const existing = result.get(key) || [];
 						existing.push(reply);
 						result.set(key, existing);

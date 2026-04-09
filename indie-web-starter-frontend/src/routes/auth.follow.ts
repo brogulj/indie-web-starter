@@ -1,4 +1,6 @@
 import type { Hono } from 'hono';
+import { buildFollowingRecommendationsViewModel } from '../services/recommended-feeds';
+import { recommendedFeedsSnapshot } from '../services/recommended-feeds.generated';
 import type { AuthUser } from '../utils/auth';
 import { resolveBackendRequestOptions } from '../utils/backend';
 import type { FollowAuthDeps } from './auth.shared';
@@ -13,6 +15,11 @@ export const registerFollowAuthRoutes = (app: Hono, deps: FollowAuthDeps): void 
 			deps.loadCollectionMetaMap(backendOptions).catch(() => new Map()),
 		]).then(async ([baseCollections, items, collectionMetaMap]) => {
 			const followingSources = deps.resolveFollowingSources(items, collectionMetaMap);
+			const recommendationModel = buildFollowingRecommendationsViewModel(
+				recommendedFeedsSnapshot,
+				c.req.query('recFilter'),
+				c.req.query('recQuery')
+			);
 			const followingActionSuccess =
 				c.req.query('followSaved') === '1'
 					? 'Following source saved.'
@@ -28,6 +35,16 @@ export const registerFollowAuthRoutes = (app: Hono, deps: FollowAuthDeps): void 
 					followingSources,
 					hasFollowingSources: followingSources.length > 0,
 					followingActionSuccess,
+					filterOptions: recommendationModel.filterOptions.map((option) => ({
+						...option,
+						isSelected: option.value === recommendationModel.selectedFilter,
+					})),
+					selectedFilter: recommendationModel.selectedFilter,
+					recommendationQuery: recommendationModel.query,
+					recommendationGroups: recommendationModel.recommendationGroups,
+					hasRecommendationGroups: recommendationModel.hasRecommendationGroups,
+					totalRecommendationCount: recommendationModel.totalRecommendationCount,
+					recommendationsSourceUrl: recommendedFeedsSnapshot.metadata.sourceRepoUrl,
 					collections: baseCollections,
 				}),
 			);

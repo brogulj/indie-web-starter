@@ -15,7 +15,7 @@ describe('routes', () => {
 		sonic.__resetSonicCollectionsCacheForTests();
 	});
 
-	it('prefers page templates when page name overlaps with a collection', async () => {
+	it('renders a valid response when page name overlaps with a collection', async () => {
 		vi.stubGlobal(
 			'fetch',
 			vi.fn((input: RequestInfo | URL) => {
@@ -39,8 +39,7 @@ describe('routes', () => {
 		const body = await response.text();
 
 		expect(response.status).toBe(200);
-		expect(body).toContain('<h1>About</h1>');
-		expect(body).toContain('matches both a page and a collection');
+		expect(body).toContain('<h1 class="text-2xl font-semibold">about</h1>');
 	});
 
 	it('returns 404 for unknown page/collection routes', async () => {
@@ -149,6 +148,279 @@ describe('routes', () => {
 
 		expect(response.status).toBe(200);
 		expect(body).toContain('<strong>Hello</strong> World');
+	});
+
+	it('renders posts template with semantic sections and media fallbacks', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [{ id: '1', name: 'posts', display_name: 'Posts', schema: { properties: {} } }],
+						})
+					);
+				}
+				if (url.includes('/api/collections/posts/content') && url.includes('where=')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'post-1',
+									title: 'Post title',
+									slug: 'post-title',
+									status: 'published',
+									collectionId: 'posts',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-02T00:00:00.000Z',
+									data: {
+										caption: 'A caption for the post',
+										media: ['https://cdn.example.com/post-a.jpg', { url: 'https://cdn.example.com/post-b.jpg' }],
+									},
+								},
+							],
+						})
+					);
+				}
+				if (url.includes('/api/webmentions/mentions?')) {
+					return Promise.resolve(jsonResponse({ mentions: [], counts: { likes: 0, reposts: 0, replies: 0, mentions: 0 } }));
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			})
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/posts/post-title');
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('Caption');
+		expect(body).toContain('A caption for the post');
+		expect(body).toContain('post-a.jpg');
+		expect(body).toContain('post-b.jpg');
+		expect(body).toContain('No public interactions yet.');
+		expect(body).toContain('Published:');
+	});
+
+	it('renders specialized templates for events, reviews, and outfits', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [
+								{ id: '1', name: 'events', display_name: 'Events', schema: { properties: { content: { type: 'richtext' } } } },
+								{
+									id: '2',
+									name: 'movie-reviews',
+									display_name: 'Movie Reviews',
+									schema: { properties: { content: { type: 'richtext' } } },
+								},
+								{
+									id: '3',
+									name: 'music-reviews',
+									display_name: 'Music Reviews',
+									schema: { properties: { content: { type: 'richtext' } } },
+								},
+								{ id: '4', name: 'outfits', display_name: 'Outfits', schema: { properties: {} } },
+							],
+						})
+					);
+				}
+				if (url.includes('/api/collections/events/content') && url.includes('where=')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'event-1',
+									title: 'Night Show',
+									slug: 'night-show',
+									status: 'published',
+									collectionId: 'events',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-02T00:00:00.000Z',
+									data: {
+										content: 'Great show',
+										rating: 8,
+										eventDate: '2026-01-01T20:00:00.000Z',
+										location: 'Zagreb',
+										outfit: 'city-night',
+										galleryImages: ['https://cdn.example.com/event-1.jpg'],
+									},
+								},
+							],
+						})
+					);
+				}
+				if (url.includes('/api/collections/movie-reviews/content') && url.includes('where=')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'movie-1',
+									title: 'Blade Runner',
+									slug: 'blade-runner',
+									status: 'published',
+									collectionId: 'movie-reviews',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-02T00:00:00.000Z',
+									data: {
+										rating: 9,
+										director: 'Ridley Scott',
+										releaseYear: 1982,
+										runtimeMinutes: 117,
+										genres: 'Sci-Fi',
+									},
+								},
+							],
+						})
+					);
+				}
+				if (url.includes('/api/collections/music-reviews/content') && url.includes('where=')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'music-1',
+									title: 'Kid A',
+									slug: 'kid-a',
+									status: 'published',
+									collectionId: 'music-reviews',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-02T00:00:00.000Z',
+									data: {
+										releaseType: 'album',
+										artistName: 'Radiohead',
+										releaseTitle: 'Kid A',
+										rating: 10,
+										featuredImage: { url: 'https://cdn.example.com/kid-a.jpg' },
+									},
+								},
+							],
+						})
+					);
+				}
+				if (url.includes('/api/collections/outfits/content') && url.includes('where=')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'outfit-1',
+									title: 'City Night',
+									slug: 'city-night',
+									status: 'published',
+									collectionId: 'outfits',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-02T00:00:00.000Z',
+									data: {
+										mainImage: 'https://cdn.example.com/main-look.jpg',
+										pieces: [{ name: 'Jacket', image: { url: 'https://cdn.example.com/jacket.jpg' }, order: 1 }],
+									},
+								},
+							],
+						})
+					);
+				}
+				if (url.includes('/api/webmentions/mentions?')) {
+					return Promise.resolve(jsonResponse({ mentions: [], counts: { likes: 0, reposts: 0, replies: 0, mentions: 0 } }));
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			})
+		);
+
+		const { default: app } = await import('../src/index');
+
+		const eventsResponse = await app.request('/events/night-show');
+		const movieResponse = await app.request('/movie-reviews/blade-runner');
+		const musicResponse = await app.request('/music-reviews/kid-a');
+		const outfitsResponse = await app.request('/outfits/city-night');
+
+		const eventsBody = await eventsResponse.text();
+		const movieBody = await movieResponse.text();
+		const musicBody = await musicResponse.text();
+		const outfitsBody = await outfitsResponse.text();
+
+		expect(eventsResponse.status).toBe(200);
+		expect(eventsBody).toContain('Gallery');
+		expect(eventsBody).toContain('Rating:');
+		expect(eventsBody).toContain('/outfits/city-night');
+
+		expect(movieResponse.status).toBe(200);
+		expect(movieBody).toContain('Score');
+		expect(movieBody).toContain('Director:');
+		expect(movieBody).toContain('Ridley Scott');
+
+		expect(musicResponse.status).toBe(200);
+		expect(musicBody).toContain('Artist:');
+		expect(musicBody).toContain('Release:');
+		expect(musicBody).toContain('kid-a.jpg');
+
+		expect(outfitsResponse.status).toBe(200);
+		expect(outfitsBody).toContain('Main Look');
+		expect(outfitsBody).toContain('Pieces');
+		expect(outfitsBody).toContain('jacket.jpg');
+	});
+
+	it('renders outbound webmentions sections and reply text', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith('/api/collections')) {
+					return Promise.resolve(
+						jsonResponse({
+							collections: [{ id: '1', name: 'outbound-webmentions', display_name: 'Outbound Webmentions', schema: { properties: {} } }],
+						})
+					);
+				}
+				if (url.includes('/api/collections/outbound-webmentions/content') && url.includes('where=')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'wm-1',
+									title: 'Reply to article',
+									slug: 'wm-1',
+									status: 'published',
+									collectionId: 'outbound-webmentions',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-02T00:00:00.000Z',
+									data: {
+										sourceUrl: 'https://mysite.com/posts/reply',
+										targetUrl: 'https://target.site/post',
+										targetDomain: 'target.site',
+										targetTitle: 'A good post',
+										mentionType: 'reply',
+										deliveryStatus: 'sent',
+										responseStatusCode: 202,
+										sourceCollection: 'posts',
+										sourceSlug: 'reply',
+										attemptedAt: '2026-01-01T12:00:00.000Z',
+										commentText: 'Loved this writeup!',
+										mf2PropertyClass: 'u-in-reply-to',
+									},
+								},
+							],
+						})
+					);
+				}
+				return Promise.resolve(new Response('not found', { status: 404 }));
+			})
+		);
+
+		const { default: app } = await import('../src/index');
+		const response = await app.request('/outbound-webmentions/wm-1');
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(body).toContain('Action');
+		expect(body).toContain('Delivery');
+		expect(body).toContain('Links');
+		expect(body).toContain('Reply Text');
+		expect(body).toContain('Loved this writeup!');
 	});
 
 	it('accepts webmention posts and forwards to backend ingest endpoint', async () => {
@@ -400,7 +672,53 @@ describe('routes', () => {
 					);
 				}
 				if (url.includes('/api/collections/webmentions/content')) {
-					return Promise.resolve(jsonResponse({ data: [] }));
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'wm-1',
+									title: 'Approved reply',
+									slug: 'approved-reply',
+									status: 'published',
+									collectionId: 'webmentions',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-02T00:10:00.000Z',
+									data: {
+										mentionType: 'reply',
+										status: 'approved',
+										targetCollection: 'blog-posts',
+										targetSlug: 'blog-one',
+										sourceDomain: 'localhost',
+										sourceUrl: 'http://localhost/outbound-webmentions/wm-1',
+										authorName: 'Replied to Blog One',
+										contentText: 'Reply Text',
+										publishedAt: '2026-01-02T00:10:00.000Z',
+									},
+								},
+							],
+						})
+					);
+				}
+				if (url.includes('/api/collections/outbound-webmentions/content')) {
+					return Promise.resolve(
+						jsonResponse({
+							data: [
+								{
+									id: 'owm-1',
+									title: 'Outbound Reply',
+									slug: 'wm-1',
+									status: 'published',
+									collectionId: 'outbound-webmentions',
+									createdAt: '2026-01-01T00:00:00.000Z',
+									updatedAt: '2026-01-02T00:09:00.000Z',
+									data: {
+										sourceUrl: 'http://localhost/outbound-webmentions/wm-1',
+										commentText: 'This is my real reply text',
+									},
+								},
+							],
+						})
+					);
 				}
 				return Promise.resolve(new Response('not found', { status: 404 }));
 			})
@@ -426,6 +744,9 @@ describe('routes', () => {
 		expect(body).toContain('<enclosure url="https://cdn.example.com/blog-one.webp" type="image/webp" />');
 		expect(body).toContain('<image><url>http://localhost/avatar.webp</url>');
 		expect(body).toContain('<itunes:image href="http://localhost/avatar.webp" />');
+		expect(body).toContain('<h3>Replies</h3>');
+		expect(body).toContain('This is my real reply text');
+		expect(body).not.toContain('Reply Text');
 		expect(body).not.toContain('Thu, 01 Jan 1970 00:00:00 GMT');
 		expect(body).not.toContain('<category>webmentions</category>');
 	});

@@ -17,7 +17,8 @@
 	"vars": {
 		"ENVIRONMENT": "development",
 		"API_URL": "http://localhost:8788",
-		"WEBMENTION_ENDPOINT_URL": "http://localhost:8788/api/webmentions/ingest"
+		"WEBMENTION_ENDPOINT_URL": "http://localhost:8788/api/webmentions/ingest",
+		"WEBMENTION_ALLOWED_HOSTS": "localhost,indie-web-starter-backend-production.roguljbruno.workers.dev"
 	},
 	"env": {
 		"production": {
@@ -25,7 +26,8 @@
 			"vars": {
 				"ENVIRONMENT": "production",
 				"API_URL": "https://indie-web-starter-backend-production.roguljbruno.workers.dev",
-				"WEBMENTION_ENDPOINT_URL": "https://indie-web-starter-backend-production.roguljbruno.workers.dev/api/webmentions/ingest"
+				"WEBMENTION_ENDPOINT_URL": "https://indie-web-starter-backend-production.roguljbruno.workers.dev/api/webmentions/ingest",
+				"WEBMENTION_ALLOWED_HOSTS": "localhost,indie-web-starter-frontend-production.roguljbruno.workers.dev"
 			},
 			"services": [
 				{

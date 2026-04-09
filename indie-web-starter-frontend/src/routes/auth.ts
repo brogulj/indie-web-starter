@@ -5,6 +5,7 @@ import { registerFeedAuthRoutes } from './auth.feed';
 import { registerFollowAuthRoutes } from './auth.follow';
 import { render } from '../render';
 import { resolveBaseCollections } from '../services/required-collections';
+import { dashboardFlashTemplate, dashboardLocalNavTemplate, dashboardPageHeaderTemplate } from '../templates/dashboard-shell';
 import type { AuthUser } from '../utils/auth';
 import { AuthApiError, authGetCurrentUser, authLogin } from '../utils/auth';
 import { sonicGetCollectionsCached, sonicGetContent, type CollectionFilter } from '../utils/sonic';
@@ -65,6 +66,9 @@ type FollowingFeedItem = {
 	authorUrl?: string;
 	categories?: string[];
 	microformats?: Record<string, unknown>;
+	webmentionEndpoint?: string;
+	hasWebmentionEndpoint?: boolean;
+	inboundRepliesFromFeed?: InboundReplyRecord[];
 };
 
 type DomElementLike = {
@@ -191,204 +195,263 @@ const loginTemplate = /* html */ `
 `;
 
 const dashboardTemplate = /* html */ `
-<section class="border border-gray-300 p-4">
-  <h1 class="text-2xl font-semibold">Dashboard</h1>
-  <p class="mt-2 text-sm text-gray-700">You are signed in.</p>
+<section class="space-y-6">
+  ${dashboardLocalNavTemplate}
+  ${dashboardPageHeaderTemplate}
+  ${dashboardFlashTemplate}
 
-  <dl class="mt-4 grid gap-2 sm:grid-cols-2 text-sm">
-    <div class="border border-gray-200 p-2"><dt>Email</dt><dd>{{user.email}}</dd></div>
-    <div class="border border-gray-200 p-2"><dt>Role</dt><dd>{{user.role}}</dd></div>
-    <div class="border border-gray-200 p-2"><dt>Username</dt><dd>{{user.username}}</dd></div>
-    <div class="border border-gray-200 p-2"><dt>Name</dt><dd>{{user.firstName}} {{user.lastName}}</dd></div>
-  </dl>
-</section>
+  <section class="rounded-lg border border-gray-200 bg-white p-4" aria-label="Summary">
+    <h2 class="text-lg font-semibold">Content Overview</h2>
+    <div class="mt-3 grid gap-3 sm:grid-cols-3">
+      <article class="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p class="text-xs uppercase tracking-wide text-gray-600">Total items</p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900">{{overviewMetrics.totalItems}}</p>
+      </article>
+      <article class="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p class="text-xs uppercase tracking-wide text-gray-600">Drafts</p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900">{{overviewMetrics.totalDrafts}}</p>
+      </article>
+      <article class="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p class="text-xs uppercase tracking-wide text-gray-600">Updated in 7 days</p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900">{{overviewMetrics.recentlyUpdated}}</p>
+      </article>
+    </div>
 
-<section class="mt-6 border border-gray-300 p-4">
-  <h2 class="text-xl font-semibold">Following</h2>
-  <p class="mt-2 text-sm text-gray-700">Manage followed sources and browse aggregated feed items from dedicated pages.</p>
-  <div class="mt-3 flex flex-wrap gap-2">
-    <a class="border border-gray-300 bg-gray-100 px-3 py-2 text-sm" href="/dashboard/following">Manage Following Sources</a>
-    <a class="border border-gray-300 bg-gray-100 px-3 py-2 text-sm" href="/dashboard/following/feed">Open Following Feed</a>
-  </div>
-</section>
+    {{#hasRecentContentItems}}
+    <div class="mt-4">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">Recently Updated</h3>
+      <ul class="mt-2 divide-y divide-gray-200 rounded-md border border-gray-200">
+        {{#recentContentItems}}
+        <li class="flex flex-wrap items-center justify-between gap-2 p-3">
+          <div>
+            <a class="font-medium text-gray-900 underline decoration-gray-300 underline-offset-2" href="/dashboard/{{collectionPath}}/{{id}}">{{displayTitle}}</a>
+            <p class="mt-0.5 text-sm text-gray-600">{{collectionTitle}} · {{status}} · {{updatedAt}}</p>
+          </div>
+          <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/{{collectionPath}}/{{id}}">View / Edit</a>
+        </li>
+        {{/recentContentItems}}
+      </ul>
+    </div>
+    {{/hasRecentContentItems}}
+  </section>
 
-<section class="mt-6 border border-gray-300 p-4">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 class="text-xl font-semibold">Webmention Moderation</h2>
-    <a class="text-sm underline" href="/dashboard/webmentions">Open webmentions collection</a>
-  </div>
-  <p class="mt-2 text-sm text-gray-700">Approve pending webmentions and optionally trust their source domain immediately.</p>
+  <section id="collections" class="mt-6 rounded-lg border border-gray-200 bg-white p-4" aria-label="Collections">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-lg font-semibold">Collections Overview</h2>
+      <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/content/new">New Content</a>
+    </div>
+    <p class="mt-1 text-sm text-gray-700">Jump into a collection to manage items in detail.</p>
 
-  {{#webmentionActionSuccess}}
-  <p class="mt-3 border border-green-300 bg-green-50 p-2 text-sm text-green-700">{{webmentionActionSuccess}}</p>
-  {{/webmentionActionSuccess}}
+    {{#hasCollectionSummaries}}
+    <div class="mt-4 grid gap-3 md:grid-cols-2">
+      {{#collectionSummaries}}
+      <article class="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <h3 class="text-base font-semibold text-gray-900">{{collectionTitle}}</h3>
+        <p class="mt-1 text-sm text-gray-600">{{itemCount}} items · {{draftCount}} drafts</p>
+        <p class="mt-1 text-sm text-gray-600">Last updated: {{lastUpdatedDisplay}}</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/{{collectionPath}}">Open</a>
+          <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/{{collectionPath}}/new">New</a>
+        </div>
+      </article>
+      {{/collectionSummaries}}
+    </div>
+    {{/hasCollectionSummaries}}
 
-  {{#hasPendingWebmentions}}
-  <div class="mt-3 overflow-x-auto">
-    <table class="min-w-full border border-gray-200 text-sm">
-      <thead class="bg-gray-50">
-        <tr>
-          <th class="border border-gray-200 px-2 py-2 text-left">Source</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Type</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Target</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Updated</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{#pendingWebmentions}}
-        <tr>
-          <td class="border border-gray-200 px-2 py-2">{{sourceDomain}}</td>
-          <td class="border border-gray-200 px-2 py-2">{{mentionType}}</td>
-          <td class="border border-gray-200 px-2 py-2">/{{targetCollection}}/{{targetSlug}}</td>
-          <td class="border border-gray-200 px-2 py-2">{{updatedAt}}</td>
-          <td class="border border-gray-200 px-2 py-2">
-            <div class="flex flex-wrap gap-2">
+    {{^hasCollectionSummaries}}
+    <p class="mt-3 text-sm text-gray-600">No content found.</p>
+    {{/hasCollectionSummaries}}
+  </section>
+
+  <section class="mt-6 rounded-lg border border-gray-200 bg-white p-4" aria-label="Secondary operations">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-lg font-semibold">Secondary Operations</h2>
+    </div>
+
+    <div class="mt-3 grid gap-3 lg:grid-cols-2">
+      <article class="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">Following</h3>
+        <p class="mt-1 text-sm text-gray-700">{{followingSourcesCount}} active sources.</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/following">Manage Sources</a>
+          <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/following/feed">Open Feed</a>
+        </div>
+      </article>
+
+      <article class="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">Webmention Moderation</h3>
+          <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/webmentions">Open Collection</a>
+        </div>
+        <p class="mt-1 text-sm text-gray-700">{{pendingWebmentionsCount}} pending items.</p>
+        {{#hasPendingWebmentionPreview}}
+        <ul class="mt-2 divide-y divide-gray-200 rounded-md border border-gray-200">
+          {{#pendingWebmentionPreview}}
+          <li class="flex flex-wrap items-start justify-between gap-2 p-3">
+            <div>
+              <p class="font-medium text-gray-900 underline decoration-gray-300 underline-offset-2">{{sourceDomain}}</p>
+              <p class="mt-0.5 text-sm text-gray-600">{{mentionType}} · /{{targetCollection}}/{{targetSlug}}</p>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
               <form method="post" action="/dashboard/webmentions/{{id}}/approve">
-                <button type="submit" class="border border-gray-300 bg-gray-100 px-2 py-1 text-xs">Approve</button>
+                <button type="submit" class="inline-flex cursor-pointer items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50">Approve</button>
               </form>
               <form method="post" action="/dashboard/webmentions/{{id}}/approve">
                 <input type="hidden" name="trustDomain" value="1" />
-                <button type="submit" class="border border-gray-300 bg-gray-100 px-2 py-1 text-xs">Approve + Trust Domain</button>
+                <button type="submit" class="inline-flex cursor-pointer items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50">Approve + Trust</button>
               </form>
-              <a class="underline text-xs" href="/dashboard/{{collectionPath}}/{{id}}">View / Edit</a>
+              <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/{{collectionPath}}/{{id}}">View / Edit</a>
             </div>
-          </td>
-        </tr>
-        {{/pendingWebmentions}}
-      </tbody>
-    </table>
-  </div>
-  {{/hasPendingWebmentions}}
+          </li>
+          {{/pendingWebmentionPreview}}
+        </ul>
+        {{/hasPendingWebmentionPreview}}
+        {{^hasPendingWebmentionPreview}}
+        <p class="mt-2 text-sm text-gray-600">No pending webmentions.</p>
+        {{/hasPendingWebmentionPreview}}
+      </article>
+    </div>
+  </section>
 
-  {{^hasPendingWebmentions}}
-  <p class="mt-3 text-sm text-gray-700">No pending webmentions.</p>
-  {{/hasPendingWebmentions}}
-</section>
-
-<section class="mt-6 border border-gray-300 p-4">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 class="text-xl font-semibold">Content</h2>
-    <a class="border border-gray-300 bg-gray-100 px-3 py-1 text-sm" href="/dashboard/content/new">New Content</a>
-  </div>
-
-  {{#contentError}}
-  <p class="mt-3 border border-red-300 bg-red-50 p-2 text-sm text-red-700">{{contentError}}</p>
-  {{/contentError}}
-
-  {{#hasCollectionSections}}
-  <div class="mt-4 space-y-6">
-    {{#collectionSections}}
-    <section>
-      <div class="flex items-center justify-between gap-2">
-        <h3 class="text-lg font-semibold">
-          <a class="underline" href="/dashboard/{{collectionPath}}">{{collectionTitle}}</a>
-        </h3>
-        <a class="text-sm underline" href="/dashboard/{{collectionPath}}/new">New</a>
-      </div>
-      <div class="mt-2 overflow-x-auto">
-        <table class="min-w-full border border-gray-200 text-sm">
-          <thead class="bg-gray-50">
-            <tr>
-              <th class="border border-gray-200 px-2 py-2 text-left">Title</th>
-              <th class="border border-gray-200 px-2 py-2 text-left">Status</th>
-              <th class="border border-gray-200 px-2 py-2 text-left">Slug</th>
-              <th class="border border-gray-200 px-2 py-2 text-left">Updated</th>
-              <th class="border border-gray-200 px-2 py-2 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {{#items}}
-            <tr>
-              <td class="border border-gray-200 px-2 py-2">{{title}}</td>
-              <td class="border border-gray-200 px-2 py-2">{{status}}</td>
-              <td class="border border-gray-200 px-2 py-2">{{slug}}</td>
-              <td class="border border-gray-200 px-2 py-2">{{updatedAt}}</td>
-              <td class="border border-gray-200 px-2 py-2">
-                <a class="underline" href="/dashboard/{{collectionPath}}/{{id}}">View / Edit</a>
-              </td>
-            </tr>
-            {{/items}}
-          </tbody>
-        </table>
-      </div>
-    </section>
-    {{/collectionSections}}
-  </div>
-  {{/hasCollectionSections}}
-
-  {{^hasCollectionSections}}
-  <p class="mt-3 text-sm text-gray-700">No content found.</p>
-  {{/hasCollectionSections}}
+  <section class="mt-4 flex justify-end">
+    <form method="post" action="/logout">
+      <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50">Log Out</button>
+    </form>
+  </section>
 </section>
 `;
 
 const followingSourcesTemplate = /* html */ `
-<section class="border border-gray-300 p-4">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h1 class="text-2xl font-semibold">Following Sources</h1>
-    <a class="text-sm underline" href="/dashboard">Back to Dashboard</a>
-  </div>
-  <p class="mt-2 text-sm text-gray-700">Follow sites or RSS/Atom feeds.</p>
+<section class="space-y-6">
+  <header class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+    <div>
+      <h1 class="text-2xl font-semibold">Following Sources</h1>
+      <p class="mt-1 text-sm text-gray-700">Manage followed feeds and discover new ones.</p>
+    </div>
+    <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-100" href="/dashboard">Back to Dashboard</a>
+  </header>
 
   {{#followingActionSuccess}}
-  <p class="mt-3 border border-green-300 bg-green-50 p-2 text-sm text-green-700">{{followingActionSuccess}}</p>
+  <p class="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700">{{followingActionSuccess}}</p>
   {{/followingActionSuccess}}
 
-  <form method="post" action="/dashboard/following/add" class="mt-3 grid gap-2 sm:grid-cols-4">
-    <input name="siteUrl" required placeholder="https://example.com" class="border border-gray-300 px-3 py-2 text-sm" />
-    <input name="feedUrl" placeholder="https://example.com/feed.xml (optional)" class="border border-gray-300 px-3 py-2 text-sm" />
-    <input name="title" placeholder="Display title (optional)" class="border border-gray-300 px-3 py-2 text-sm" />
-    <button type="submit" class="border border-gray-300 bg-gray-100 px-3 py-2 text-sm">Follow</button>
-  </form>
+  <section class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-lg font-semibold">Your Following Sources</h2>
+    <p class="mt-1 text-sm text-gray-700">Add a source manually or remove sources you already follow.</p>
 
-  {{#hasFollowingSources}}
-  <div class="mt-3 overflow-x-auto">
-    <table class="min-w-full border border-gray-200 text-sm">
-      <thead class="bg-gray-50">
-        <tr>
-          <th class="border border-gray-200 px-2 py-2 text-left">Title</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Site</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Feed</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Updated</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{#followingSources}}
-        <tr>
-          <td class="border border-gray-200 px-2 py-2">{{title}}</td>
-          <td class="border border-gray-200 px-2 py-2"><a class="underline" href="{{siteUrl}}" target="_blank" rel="noopener noreferrer">{{siteUrl}}</a></td>
-          <td class="border border-gray-200 px-2 py-2">{{#feedUrl}}<a class="underline" href="{{feedUrl}}" target="_blank" rel="noopener noreferrer">{{feedUrl}}</a>{{/feedUrl}}{{^feedUrl}}(auto-detect){{/feedUrl}}</td>
-          <td class="border border-gray-200 px-2 py-2">{{updatedAt}}</td>
-          <td class="border border-gray-200 px-2 py-2">
-            <form method="post" action="/dashboard/following/{{id}}/remove">
-              <button type="submit" class="border border-gray-300 bg-gray-100 px-2 py-1 text-xs">Remove</button>
-            </form>
-          </td>
-        </tr>
-        {{/followingSources}}
-      </tbody>
-    </table>
-  </div>
-  {{/hasFollowingSources}}
+    <form method="post" action="/dashboard/following/add" class="mt-4 grid gap-2 sm:grid-cols-4">
+      <input name="siteUrl" required placeholder="https://example.com" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+      <input name="feedUrl" placeholder="https://example.com/feed.xml (optional)" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+      <input name="title" placeholder="Display title (optional)" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+      <button type="submit" class="rounded-md border border-gray-900 bg-gray-900 px-3 py-2 text-sm text-white transition hover:bg-black">Follow</button>
+    </form>
 
-  {{^hasFollowingSources}}
-  <p class="mt-3 text-sm text-gray-700">No followed sources yet.</p>
-  {{/hasFollowingSources}}
+    {{#hasFollowingSources}}
+    <div class="mt-4 overflow-x-auto">
+      <table class="min-w-full border border-gray-200 text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="border border-gray-200 px-2 py-2 text-left">Title</th>
+            <th class="border border-gray-200 px-2 py-2 text-left">Site</th>
+            <th class="border border-gray-200 px-2 py-2 text-left">Feed</th>
+            <th class="border border-gray-200 px-2 py-2 text-left">Updated</th>
+            <th class="border border-gray-200 px-2 py-2 text-left">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#followingSources}}
+          <tr>
+            <td class="border border-gray-200 px-2 py-2">{{title}}</td>
+            <td class="border border-gray-200 px-2 py-2"><a class="underline" href="{{siteUrl}}" target="_blank" rel="noopener noreferrer">{{siteUrl}}</a></td>
+            <td class="border border-gray-200 px-2 py-2">{{#feedUrl}}<a class="underline" href="{{feedUrl}}" target="_blank" rel="noopener noreferrer">{{feedUrl}}</a>{{/feedUrl}}{{^feedUrl}}(auto-detect){{/feedUrl}}</td>
+            <td class="border border-gray-200 px-2 py-2">{{updatedAt}}</td>
+            <td class="border border-gray-200 px-2 py-2">
+              <form method="post" action="/dashboard/following/{{id}}/remove">
+                <button type="submit" class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs transition hover:bg-gray-100">Remove</button>
+              </form>
+            </td>
+          </tr>
+          {{/followingSources}}
+        </tbody>
+      </table>
+    </div>
+    {{/hasFollowingSources}}
+
+    {{^hasFollowingSources}}
+    <p class="mt-3 text-sm text-gray-700">No followed sources yet.</p>
+    {{/hasFollowingSources}}
+  </section>
+
+  <section class="rounded-lg border border-gray-200 bg-white p-4">
+    <div class="flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <h2 class="text-lg font-semibold">Recommended RSS Feeds</h2>
+        <p class="mt-1 text-sm text-gray-700">Categories first, then countries. Source: <a class="underline" href="{{recommendationsSourceUrl}}" target="_blank" rel="noopener noreferrer">awesome-rss-feeds</a>.</p>
+      </div>
+      <p class="text-xs text-gray-600">{{totalRecommendationCount}} results</p>
+    </div>
+
+    <form method="get" action="/dashboard/following" class="mt-4 grid gap-2 sm:grid-cols-[240px_1fr_auto]">
+      <select name="recFilter" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+        {{#filterOptions}}
+        <option value="{{value}}" {{#isSelected}}selected{{/isSelected}}>{{label}}</option>
+        {{/filterOptions}}
+      </select>
+      <input name="recQuery" value="{{recommendationQuery}}" placeholder="Search by title, domain, or URL" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+      <button type="submit" class="rounded-md border border-gray-900 bg-gray-900 px-3 py-2 text-sm text-white transition hover:bg-black">Apply</button>
+    </form>
+
+    {{#hasRecommendationGroups}}
+    <div class="mt-4 space-y-5">
+      {{#recommendationGroups}}
+      <section>
+        <div class="flex items-center justify-between gap-2 border-b border-gray-200 pb-2">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">{{kind}}: {{name}}</h3>
+          <p class="text-xs text-gray-500">{{feedCount}} feeds</p>
+        </div>
+        <ul class="mt-3 space-y-2">
+          {{#feeds}}
+          <li class="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-medium text-gray-900">{{title}}</p>
+                <p class="mt-0.5 truncate text-xs text-gray-600">{{domain}}</p>
+                <p class="mt-1 truncate text-xs text-gray-500">{{feedUrl}}</p>
+              </div>
+              <form method="post" action="/dashboard/following/add" class="shrink-0">
+                <input type="hidden" name="siteUrl" value="{{siteUrl}}" />
+                <input type="hidden" name="feedUrl" value="{{feedUrl}}" />
+                <input type="hidden" name="title" value="{{title}}" />
+                <button type="submit" class="rounded-md border border-gray-900 bg-gray-900 px-3 py-1.5 text-xs text-white transition hover:bg-black">Add Feed</button>
+              </form>
+            </div>
+          </li>
+          {{/feeds}}
+        </ul>
+      </section>
+      {{/recommendationGroups}}
+    </div>
+    {{/hasRecommendationGroups}}
+
+    {{^hasRecommendationGroups}}
+    <p class="mt-4 text-sm text-gray-700">No recommended feeds match this filter.</p>
+    {{/hasRecommendationGroups}}
+  </section>
 </section>
 `;
 
 const followingFeedTemplate = /* html */ `
-<section class="mx-auto max-w-3xl space-y-4">
-  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-3">
-    <h1 class="text-2xl font-semibold">Following Feed</h1>
-    <div class="flex flex-wrap gap-2">
-      <a class="text-sm underline" href="/dashboard/following">Manage Following Sources</a>
-      <a class="text-sm underline" href="/dashboard">Back to Dashboard</a>
+<section class="mx-auto max-w-4xl space-y-4 md:space-y-5">
+  <div class="flex flex-wrap items-end justify-between gap-3 border-b border-gray-200 pb-3 md:pb-4">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight text-gray-900 md:text-3xl">Following Feed</h1>
+      <p class="mt-1 text-sm text-gray-600">Latest items from your followed sites and feeds.</p>
+    </div>
+    <div class="flex flex-wrap gap-3 text-sm">
+      <a class="text-gray-700 underline decoration-gray-400 underline-offset-4 transition hover:text-black focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500" href="/dashboard/following">Manage Following Sources</a>
+      <a class="text-gray-700 underline decoration-gray-400 underline-offset-4 transition hover:text-black focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500" href="/dashboard">Back to Dashboard</a>
     </div>
   </div>
-  <p class="mt-2 text-sm text-gray-700">Latest items from your followed sites and feeds.</p>
 
   {{#webmentionActionSuccess}}
   <p class="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700">{{webmentionActionSuccess}}</p>
@@ -398,95 +461,154 @@ const followingFeedTemplate = /* html */ `
   {{/webmentionActionError}}
 
   {{#hasFollowingFeedItems}}
-  <div class="space-y-4">
+  <div class="space-y-3 md:space-y-4">
     {{#followingFeedItems}}
-    <article class="border border-gray-200 bg-white p-4 shadow-sm md:p-5">
-      <div class="flex items-center justify-between gap-2">
-        <div class="flex min-w-0 items-center gap-2">
-          {{#authorPhotoUrl}}<img src="{{authorPhotoUrl}}" alt="{{displayAuthor}}" class="h-6 w-6 rounded-full object-cover" loading="lazy" referrerpolicy="no-referrer" />{{/authorPhotoUrl}}
-          <p class="truncate text-sm font-medium text-gray-800">{{displayAuthor}}</p>
-        </div>
-        {{#displayDate}}<p class="text-[11px] text-gray-500">{{displayDate}}</p>{{/displayDate}}
-      </div>
-      {{#photoUrl}}
-      <img src="{{photoUrl}}" alt="{{displayTitle}}" class="mt-3 h-52 w-full rounded-lg object-cover" loading="lazy" />
-      {{/photoUrl}}
-      <h3 class="mt-3 text-lg font-semibold leading-snug text-gray-900">
-        <a class="hover:underline" href="{{url}}" target="_blank" rel="noopener noreferrer">{{displayTitle}}</a>
-      </h3>
-      <p class="mt-1 text-xs text-gray-600"><a class="underline" href="{{displayHostUrl}}" target="_blank" rel="noopener noreferrer">{{displayHost}}</a></p>
-      {{#displayCategories}}<p class="mt-1 text-xs text-gray-500">{{displayCategories}}</p>{{/displayCategories}}
-      {{#summary}}<p class="mt-3 line-clamp-3 text-sm text-gray-700">{{summary}}</p>{{/summary}}
-      {{#microformatsPreview}}
-      <div class="mt-3 rounded border border-gray-200 bg-gray-50 p-2">
-        <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Microformats</p>
-        <p class="mt-1 whitespace-pre-wrap break-words text-xs text-gray-700">{{microformatsPreview}}</p>
-      </div>
-      {{/microformatsPreview}}
-      <div class="mt-4 border-t border-gray-100 pt-3">
-        <div class="flex items-start gap-2">
-          <form method="post" action="/dashboard/following/feed/like" data-wm-action="like" class="shrink-0">
-            <input type="hidden" name="targetUrl" value="{{url}}" />
-            <input type="hidden" name="targetTitle" value="{{displayTitle}}" />
-            {{#isLiked}}
-            <button type="submit" disabled data-permanent-disabled="1" class="inline-flex items-center gap-1 rounded-full border border-red-700 bg-red-700 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-100">
-              <span>❤️</span>
-              <span>LIKED</span>
-            </button>
-            {{/isLiked}}
-            {{^isLiked}}
-            <button type="submit" class="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">
-              <span>❤️</span>
-              <span>Like</span>
-            </button>
-            {{/isLiked}}
-          </form>
-          <form method="post" action="/dashboard/following/feed/comment" class="flex min-w-0 flex-1 items-start gap-2" data-wm-action="comment">
-            <input type="hidden" name="targetUrl" value="{{url}}" />
-            <input type="hidden" name="targetTitle" value="{{displayTitle}}" />
-            <textarea
-              name="commentText"
-              required
-              minlength="2"
-              maxlength="280"
-              rows="2"
-              placeholder="Write a short comment..."
-              class="min-h-[42px] min-w-0 flex-1 resize-y rounded-xl border border-gray-300 px-3 py-2 text-xs transition focus:border-gray-500 focus:outline-none"
-            ></textarea>
-            <button type="submit" class="shrink-0 rounded-full border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60">Comment</button>
-          </form>
-        </div>
-      </div>
-      <div data-previous-comments class="mt-3 space-y-2">
-        {{#previousComments}}
-        <div class="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
-          <div class="flex items-center justify-between gap-2">
-            <p class="text-[11px] font-medium text-blue-700">{{author}}</p>
-            {{#displayDate}}<p class="text-[11px] text-blue-700/80">{{displayDate}}</p>{{/displayDate}}
+    <article class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
+      <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px] sm:gap-5 md:grid-cols-[minmax(0,1fr)_260px]">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <div class="flex min-w-0 items-center gap-2">
+              {{#authorPhotoUrl}}<img src="{{authorPhotoUrl}}" alt="{{displayAuthor}}" class="h-7 w-7 rounded-full object-cover" loading="lazy" referrerpolicy="no-referrer" />{{/authorPhotoUrl}}
+              <p class="truncate font-medium text-gray-900">{{displayAuthor}}</p>
+            </div>
+            <span class="text-gray-300">•</span>
+            <a class="truncate text-gray-600 underline decoration-gray-300 underline-offset-2 transition hover:text-gray-800 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500" href="{{displayHostUrl}}" target="_blank" rel="noopener noreferrer">{{displayHost}}</a>
+            {{#displayDate}}<p class="ml-auto text-xs text-gray-500">{{displayDate}}</p>{{/displayDate}}
           </div>
-          <p class="mt-1 whitespace-pre-wrap break-words text-sm text-gray-800">{{text}}</p>
+
+          <h3 class="mt-3 text-xl font-semibold leading-snug text-gray-900 md:text-2xl">
+            <a class="rounded-sm transition hover:text-black hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500" href="{{url}}" target="_blank" rel="noopener noreferrer">{{displayTitle}}</a>
+          </h3>
+
+          {{#summary}}<p class="mt-2 line-clamp-3 text-sm leading-6 text-gray-700">{{summary}}</p>{{/summary}}
+
+          <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+            {{#displayCategories}}<p>{{displayCategories}}</p>{{/displayCategories}}
+          </div>
         </div>
-        {{/previousComments}}
-      </div>
-      {{#inboundReplies}}
-      <div class="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-        <div class="flex items-center gap-2">
-          {{#authorPhoto}}<img src="{{authorPhoto}}" alt="{{author}}" class="h-5 w-5 rounded-full object-cover" loading="lazy" referrerpolicy="no-referrer" />{{/authorPhoto}}
-          {{#authorUrl}}<a href="{{authorUrl}}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-medium text-emerald-700 hover:underline">{{author}}</a>{{/authorUrl}}
-          {{^authorUrl}}<p class="text-[11px] font-medium text-emerald-700">{{author}}</p>{{/authorUrl}}
-          {{#displayDate}}<p class="ml-auto text-[11px] text-emerald-700/80">{{displayDate}}</p>{{/displayDate}}
+
+        {{#photoUrl}}
+        <div class="sm:justify-self-end">
+          <img src="{{photoUrl}}" alt="{{displayTitle}}" class="h-52 w-full rounded-lg object-cover sm:h-44 sm:w-[220px] md:h-48 md:w-[260px]" loading="lazy" />
         </div>
-        <p class="mt-1 whitespace-pre-wrap break-words text-sm text-gray-800">{{text}}</p>
-        {{#sourceUrl}}<p class="mt-1 text-[11px]"><a href="{{sourceUrl}}" target="_blank" rel="noopener noreferrer" class="text-emerald-700 underline">View original reply</a></p>{{/sourceUrl}}
+        {{/photoUrl}}
       </div>
-      {{/inboundReplies}}
-      <p data-outbound-success class="mt-2 text-xs text-green-700"></p>
-      {{#outboundError}}
-      <p data-outbound-error class="mt-2 text-xs text-red-600">{{outboundError}}</p>
-      {{/outboundError}}
-      {{^outboundError}}
-      <p data-outbound-error class="mt-2 text-xs text-red-600"></p>
-      {{/outboundError}}
+
+      {{#webmentionAvailable}}
+      <div data-wm-actions class="mt-4 rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 p-3 sm:p-4">
+        <div class="flex items-center justify-between gap-3">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Quick response</p>
+          <div class="flex items-center justify-end gap-2">
+            <form method="post" action="/dashboard/following/feed/like" data-wm-action="like" class="shrink-0">
+              <input type="hidden" name="targetUrl" value="{{url}}" />
+              <input type="hidden" name="targetTitle" value="{{displayTitle}}" />
+              {{#isLiked}}
+              <button
+                type="submit"
+                disabled
+                data-permanent-disabled="1"
+                aria-label="Liked"
+                title="Liked"
+                class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-red-700 bg-red-700 text-base text-white disabled:cursor-not-allowed disabled:opacity-100"
+              >
+                <span aria-hidden="true">❤️</span>
+              </button>
+              {{/isLiked}}
+              {{^isLiked}}
+              <button
+                type="submit"
+                aria-label="Like this post"
+                title="Like"
+                class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-300 bg-rose-50 text-base text-rose-700 transition hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span aria-hidden="true">❤️</span>
+              </button>
+              {{/isLiked}}
+            </form>
+
+            <button
+              type="button"
+              data-comment-toggle
+              aria-expanded="false"
+              class="inline-flex h-10 items-center rounded-full border border-blue-300 bg-blue-50 px-3 text-xs font-medium text-blue-700 transition hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            >
+              Comment
+            </button>
+          </div>
+        </div>
+
+        <form method="post" action="/dashboard/following/feed/comment" class="mt-3 hidden min-w-0 space-y-2" data-wm-action="comment" data-comment-form>
+          <input type="hidden" name="targetUrl" value="{{url}}" />
+          <input type="hidden" name="targetTitle" value="{{displayTitle}}" />
+          <textarea
+            name="commentText"
+            required
+            minlength="2"
+            maxlength="280"
+            rows="3"
+            placeholder="Write a short comment..."
+            class="min-h-[88px] min-w-0 w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm transition focus:border-gray-500 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+          ></textarea>
+          <div class="flex items-center justify-end gap-2">
+            <button type="button" data-comment-cancel class="h-9 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-100">Cancel</button>
+            <button type="submit" class="h-9 rounded-md border border-blue-300 bg-blue-50 px-4 text-xs font-medium text-blue-700 transition hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60">Post</button>
+          </div>
+        </form>
+
+        {{#outboundSuccess}}
+        <p data-outbound-success class="mt-2 text-xs text-green-700">{{outboundSuccess}}</p>
+        {{/outboundSuccess}}
+        {{#outboundError}}
+        <p data-outbound-error class="mt-1 text-xs text-red-600">{{outboundError}}</p>
+        {{/outboundError}}
+      </div>
+      {{/webmentionAvailable}}
+
+      {{#webmentionAvailable}}
+      <div class="mt-3 space-y-2">
+        <details data-conversation-details class="group rounded-lg border border-gray-200 bg-gray-50/70 px-3 py-2">
+          <summary class="cursor-pointer list-none text-xs font-medium text-gray-800 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500">
+            <span>Conversation</span>
+            <span class="ml-1 text-gray-600">({{conversationEntries.length}})</span>
+          </summary>
+          <div data-conversation-list class="mt-2 space-y-2">
+            {{#conversationEntries}}
+            {{#isOwn}}
+            <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-[11px] font-medium text-blue-700">{{author}}</p>
+                {{#displayDate}}<p class="text-[11px] text-blue-700/80">{{displayDate}}</p>{{/displayDate}}
+              </div>
+              <p class="mt-1 whitespace-pre-wrap break-words text-sm text-gray-800">{{text}}</p>
+            </div>
+            {{/isOwn}}
+            {{^isOwn}}
+            <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <div class="flex items-center gap-2">
+                {{#authorPhoto}}<img src="{{authorPhoto}}" alt="{{author}}" class="h-5 w-5 rounded-full object-cover" loading="lazy" referrerpolicy="no-referrer" />{{/authorPhoto}}
+                {{#authorUrl}}<a href="{{authorUrl}}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-medium text-emerald-700 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500">{{author}}</a>{{/authorUrl}}
+                {{^authorUrl}}<p class="text-[11px] font-medium text-emerald-700">{{author}}</p>{{/authorUrl}}
+                {{#displayDate}}<p class="ml-auto text-[11px] text-emerald-700/80">{{displayDate}}</p>{{/displayDate}}
+              </div>
+              <p class="mt-1 whitespace-pre-wrap break-words text-sm text-gray-800">{{text}}</p>
+              {{#sourceUrl}}<p class="mt-1 text-[11px]"><a href="{{sourceUrl}}" target="_blank" rel="noopener noreferrer" class="text-emerald-700 underline decoration-emerald-400 underline-offset-2 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500">View original reply</a></p>{{/sourceUrl}}
+            </div>
+            {{/isOwn}}
+            {{/conversationEntries}}
+            {{^conversationEntries}}
+            <p class="text-xs text-gray-600">No comments or replies yet.</p>
+            {{/conversationEntries}}
+          </div>
+        </details>
+
+        {{#microformatsPreview}}
+        <details class="group rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+          <summary class="cursor-pointer list-none text-xs font-medium uppercase tracking-wide text-gray-600 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500">Microformats</summary>
+          <p class="mt-2 whitespace-pre-wrap break-words text-xs text-gray-700">{{microformatsPreview}}</p>
+        </details>
+        {{/microformatsPreview}}
+      </div>
+      {{/webmentionAvailable}}
     </article>
     {{/followingFeedItems}}
   </div>
@@ -498,26 +620,85 @@ const followingFeedTemplate = /* html */ `
 </section>
 <script>
 (() => {
-  const forms = Array.from(document.querySelectorAll('form[action="/dashboard/following/feed/like"], form[action="/dashboard/following/feed/comment"]'));
-  const setArticlePending = (article, pending) => {
-    const buttons = article.querySelectorAll('button[type="submit"]');
-    for (const button of buttons) {
-      if (pending) {
-        button.setAttribute('disabled', 'disabled');
-      } else {
-        if (button.hasAttribute('data-permanent-disabled')) {
-          button.setAttribute('disabled', 'disabled');
-        } else {
-          button.removeAttribute('disabled');
-        }
-      }
-    }
+  const forms = Array.from(
+    document.querySelectorAll('form[action="/dashboard/following/feed/like"], form[action="/dashboard/following/feed/comment"]'),
+  );
+  const commentToggles = Array.from(document.querySelectorAll('[data-comment-toggle]'));
+
+  const setFormPending = (form, pending) => {
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (!(submitButton instanceof HTMLButtonElement)) return;
     if (pending) {
-      article.classList.add('opacity-90');
+      submitButton.setAttribute('disabled', 'disabled');
+      return;
+    }
+    if (submitButton.hasAttribute('data-permanent-disabled')) {
+      submitButton.setAttribute('disabled', 'disabled');
     } else {
-      article.classList.remove('opacity-90');
+      submitButton.removeAttribute('disabled');
     }
   };
+
+  const setCommentComposerOpen = (article, open) => {
+    if (!(article instanceof HTMLElement)) return;
+    const commentForm = article.querySelector('[data-comment-form]');
+    const toggleButton = article.querySelector('[data-comment-toggle]');
+    if (!(commentForm instanceof HTMLFormElement) || !(toggleButton instanceof HTMLButtonElement)) return;
+    commentForm.classList.toggle('hidden', !open);
+    toggleButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggleButton.textContent = open ? 'Close' : 'Comment';
+    if (open) {
+      const textarea = commentForm.querySelector('textarea[name="commentText"]');
+      if (textarea instanceof HTMLTextAreaElement) textarea.focus();
+    }
+  };
+
+  const setStatusMessage = (article, kind, message) => {
+    if (!(article instanceof HTMLElement)) return;
+    const actionsRoot = article.querySelector('[data-wm-actions]');
+    if (!(actionsRoot instanceof HTMLElement)) return;
+    const selector = kind === 'error' ? '[data-outbound-error]' : '[data-outbound-success]';
+    const className = kind === 'error' ? 'mt-1 text-xs text-red-600' : 'mt-2 text-xs text-green-700';
+    const existing = actionsRoot.querySelector(selector);
+    const text = String(message || '').trim();
+
+    if (!text) {
+      if (existing instanceof HTMLElement) existing.remove();
+      return;
+    }
+
+    const node =
+      existing instanceof HTMLElement
+        ? existing
+        : (() => {
+            const created = document.createElement('p');
+            created.setAttribute(kind === 'error' ? 'data-outbound-error' : 'data-outbound-success', '');
+            created.className = className;
+            actionsRoot.appendChild(created);
+            return created;
+          })();
+    node.className = className;
+    node.textContent = text;
+  };
+
+  for (const toggle of commentToggles) {
+    if (!(toggle instanceof HTMLButtonElement)) continue;
+    toggle.addEventListener('click', () => {
+      const article = toggle.closest('article');
+      if (!(article instanceof HTMLElement)) return;
+      const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+      setCommentComposerOpen(article, !isOpen);
+    });
+  }
+
+  const cancelButtons = Array.from(document.querySelectorAll('[data-comment-cancel]'));
+  for (const cancelButton of cancelButtons) {
+    if (!(cancelButton instanceof HTMLButtonElement)) continue;
+    cancelButton.addEventListener('click', () => {
+      const article = cancelButton.closest('article');
+      setCommentComposerOpen(article, false);
+    });
+  }
 
   for (const form of forms) {
     form.addEventListener('submit', async (event) => {
@@ -525,20 +706,19 @@ const followingFeedTemplate = /* html */ `
       const submitButton = form.querySelector('button[type="submit"]');
       const article = form.closest('article');
       if (!(article instanceof HTMLElement)) return;
-      const error = article.querySelector('[data-outbound-error]');
-      const success = article.querySelector('[data-outbound-success]');
       const actionType = form.getAttribute('data-wm-action') || '';
       const submittedComment =
         actionType === 'comment'
           ? String(form.querySelector('textarea[name="commentText"]')?.value || '').trim()
           : '';
-      if (error) error.textContent = '';
-      if (success) success.textContent = '';
+      setStatusMessage(article, 'error', '');
+      setStatusMessage(article, 'success', '');
       const originalText = submitButton ? submitButton.textContent : '';
-      setArticlePending(article, true);
-      if (submitButton) {
+      setFormPending(form, true);
+      if (submitButton && actionType === 'comment') {
         submitButton.textContent = actionType === 'comment' ? 'Posting...' : 'Sending...';
       }
+      setStatusMessage(article, 'success', actionType === 'comment' ? 'Posting your comment...' : 'Sending like webmention...');
 
       try {
         const response = await fetch(form.action, {
@@ -549,23 +729,27 @@ const followingFeedTemplate = /* html */ `
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload?.ok !== true) {
           const message = String(payload?.error || 'Action failed');
-          if (error) error.textContent = message;
+          setStatusMessage(article, 'error', message);
+          setStatusMessage(article, 'success', '');
           return;
         }
-        if (success) success.textContent = '';
         if (actionType === 'like' && submitButton) {
           submitButton.setAttribute('data-permanent-disabled', '1');
           submitButton.setAttribute('disabled', 'disabled');
           submitButton.className =
-            'inline-flex items-center gap-1 rounded-full border border-red-700 bg-red-700 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-100';
-          submitButton.innerHTML = '<span>❤️</span><span>LIKED</span>';
+            'inline-flex h-10 w-10 items-center justify-center rounded-full border border-red-700 bg-red-700 text-base text-white disabled:cursor-not-allowed disabled:opacity-100';
+          submitButton.innerHTML = '<span aria-hidden="true">❤️</span>';
+          submitButton.setAttribute('aria-label', 'Liked');
+          submitButton.setAttribute('title', 'Liked');
+          setStatusMessage(article, 'success', 'Like sent successfully.');
         }
         if (actionType === 'comment') {
           const commentInput = form.querySelector('textarea[name="commentText"]');
-          const previousCommentsRoot = article.querySelector('[data-previous-comments]');
-          if (previousCommentsRoot && submittedComment) {
+          const conversationList = article.querySelector('[data-conversation-list]');
+          const conversationDetails = article.querySelector('[data-conversation-details]');
+          if (conversationList && submittedComment) {
             const wrapper = document.createElement('div');
-            wrapper.className = 'rounded-xl border border-blue-200 bg-blue-50 px-3 py-2';
+            wrapper.className = 'rounded-lg border border-blue-200 bg-blue-50 px-3 py-2';
 
             const header = document.createElement('div');
             header.className = 'flex items-center justify-between gap-2';
@@ -593,20 +777,26 @@ const followingFeedTemplate = /* html */ `
 
             wrapper.appendChild(header);
             wrapper.appendChild(body);
-            previousCommentsRoot.prepend(wrapper);
+            conversationList.prepend(wrapper);
+            if (conversationDetails instanceof HTMLDetailsElement) {
+              conversationDetails.open = true;
+            }
           }
           if (commentInput) commentInput.value = '';
+          setStatusMessage(article, 'success', 'Comment posted successfully.');
+          setCommentComposerOpen(article, false);
         }
-        if (error) error.textContent = '';
+        setStatusMessage(article, 'error', '');
       } catch {
-        if (error) error.textContent = 'Network error while sending action.';
+        setStatusMessage(article, 'error', 'Network error while sending action.');
+        setStatusMessage(article, 'success', '');
       } finally {
-        setArticlePending(article, false);
+        setFormPending(form, false);
         if (submitButton) {
           if (submitButton.hasAttribute('data-permanent-disabled')) {
             submitButton.setAttribute('disabled', 'disabled');
           } else {
-            submitButton.textContent = originalText || 'Submit';
+            submitButton.textContent = originalText || (actionType === 'comment' ? 'Post' : '');
           }
         }
       }
@@ -879,6 +1069,50 @@ const extractTextTag = (xml: string, tagName: string): string => {
 	const pattern = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i');
 	const match = xml.match(pattern);
 	return match?.[1] ? stripTags(unwrapCdata(match[1])) : '';
+};
+
+const extractRawTag = (xml: string, tagName: string): string => {
+	const pattern = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i');
+	const match = xml.match(pattern);
+	return match?.[1] ? unwrapCdata(match[1]) : '';
+};
+
+const parseEmbeddedRepliesFromFeedContent = (contentHtml: string, baseUrl: string): InboundReplyRecord[] => {
+	const sectionMatch = contentHtml.match(/<section\b[\s\S]*?<h3[^>]*>\s*Replies\s*<\/h3>[\s\S]*?<\/section>/i);
+	if (!sectionMatch?.[0]) return [];
+	const sectionHtml = sectionMatch[0];
+	const listItems = Array.from(sectionHtml.matchAll(/<li\b[\s\S]*?<\/li>/gi)).map((match) => match[0]);
+	const replies: InboundReplyRecord[] = [];
+
+	for (const itemHtml of listItems) {
+		const authorStrong = stripTags(itemHtml.match(/<strong[^>]*>([\s\S]*?)<\/strong>/i)?.[1] || '').trim();
+		const authorImgAlt = stripTags(itemHtml.match(/<img\b[^>]*\balt=["']([^"']+)["'][^>]*>/i)?.[1] || '').trim();
+		const authorName = authorStrong || authorImgAlt || 'Unknown author';
+
+		const authorAnchorHref = itemHtml.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>\s*<strong/i)?.[1] || '';
+		const sourceLinkMatch = itemHtml.match(
+			/<a\b[^>]*href=["']([^"']+)["'][^>]*>\s*View original reply\s*<\/a>/i
+		);
+		const sourceUrlRaw = sourceLinkMatch?.[1] || '';
+
+		const authorPhotoRaw = itemHtml.match(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i)?.[1] || '';
+		const paragraphs = Array.from(itemHtml.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)).map((match) =>
+			stripTags(match[1] || '').trim()
+		);
+		const contentText = paragraphs.find((text) => text && !/^view original reply$/i.test(text)) || '';
+		if (!contentText) continue;
+
+		replies.push({
+			authorName,
+			authorUrl: authorAnchorHref ? resolveUrlWithBase(authorAnchorHref, baseUrl) : '',
+			authorPhoto: authorPhotoRaw ? resolveUrlWithBase(authorPhotoRaw, baseUrl) : '',
+			contentText,
+			publishedAt: '',
+			sourceUrl: sourceUrlRaw ? resolveUrlWithBase(sourceUrlRaw, baseUrl) : '',
+		});
+	}
+
+	return replies;
 };
 
 const fetchTextWithTimeout = async (url: string, accept: string, timeoutMs = 6000): Promise<string> => {
@@ -1208,6 +1442,67 @@ const resolveUrlWithBase = (value: string, baseUrl: string): string => {
 	}
 };
 
+const FOLLOWING_IMAGE_KEY_PATTERN = /(image|media|photo|thumbnail|thumb|cover|featured|gallery|main|poster|avatar|artwork)/i;
+
+const looksLikeImageUrlForFollowing = (value: string): boolean => {
+	const lower = value.toLowerCase();
+	return (
+		/\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/.test(lower) ||
+		lower.includes('/api/media/') ||
+		lower.includes('/media/') ||
+		lower.includes('/files/')
+	);
+};
+
+const extractFirstImageFromHtmlForFollowing = (value: string, baseUrl: string): string => {
+	const match = value.match(/<img\b[^>]*src\s*=\s*["']([^"']+)["'][^>]*>/i);
+	const src = match?.[1]?.trim() || '';
+	return src ? resolveUrlWithBase(src, baseUrl) : '';
+};
+
+const extractImageUrlFromUnknownForFollowing = (value: unknown, baseUrl: string, keyHint = '', depth = 0): string => {
+	if (depth > 5) return '';
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		if (!trimmed) return '';
+		if (!FOLLOWING_IMAGE_KEY_PATTERN.test(keyHint) && !looksLikeImageUrlForFollowing(trimmed)) return '';
+		return resolveUrlWithBase(trimmed, baseUrl);
+	}
+	if (Array.isArray(value)) {
+		for (const entry of value) {
+			const found = extractImageUrlFromUnknownForFollowing(entry, baseUrl, keyHint, depth + 1);
+			if (found) return found;
+		}
+		return '';
+	}
+	if (!value || typeof value !== 'object') return '';
+	const obj = value as Record<string, unknown>;
+	const sortedKeys = Object.keys(obj).sort((a, b) => {
+		const aScore = FOLLOWING_IMAGE_KEY_PATTERN.test(a) ? 0 : 1;
+		const bScore = FOLLOWING_IMAGE_KEY_PATTERN.test(b) ? 0 : 1;
+		return aScore - bScore;
+	});
+	for (const key of sortedKeys) {
+		if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+		const found = extractImageUrlFromUnknownForFollowing(obj[key], baseUrl, key, depth + 1);
+		if (found) return found;
+	}
+	return '';
+};
+
+const resolveFollowingLocalItemImageUrl = (data: Record<string, unknown>, baseUrl: string): string => {
+	const fromData = extractImageUrlFromUnknownForFollowing(data, baseUrl);
+	if (fromData) return fromData;
+	const richTextCandidates = ['content', 'body', 'html', 'description'];
+	for (const key of richTextCandidates) {
+		const raw = data[key];
+		if (typeof raw !== 'string' || !raw) continue;
+		const extracted = extractFirstImageFromHtmlForFollowing(raw, baseUrl);
+		if (extracted) return extracted;
+	}
+	return '';
+};
+
 const extractImageFromXmlBlock = (block: string, baseUrl: string): string => {
 	const patterns = [
 		/<media:thumbnail\b[^>]*\burl=["']([^"']+)["'][^>]*>/i,
@@ -1266,13 +1561,15 @@ const fallbackFaviconUrl = (urlValue: string): string => {
 const parseRssItems = (xml: string, sourceTitle: string, limit = 8): FollowingFeedItem[] => {
 	const matches = Array.from(xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)).slice(0, limit);
 	return matches
-		.map<FollowingFeedItem | null>((match) => {
+	.map<FollowingFeedItem | null>((match) => {
 			const block = match[0];
 			const title = extractTextTag(block, 'title');
 			const url = extractTextTag(block, 'link') || extractTextTag(block, 'guid');
 			const summary = extractTextTag(block, 'description');
 			const publishedAt = extractTextTag(block, 'pubDate') || extractTextTag(block, 'dc:date');
 			const photoUrl = url ? extractImageFromXmlBlock(block, url) : '';
+			const contentEncodedRaw = extractRawTag(block, 'content:encoded') || extractRawTag(block, 'encoded');
+			const inboundRepliesFromFeed = contentEncodedRaw ? parseEmbeddedRepliesFromFeedContent(contentEncodedRaw, url) : [];
 			if (!title || !url) return null;
 			return {
 				sourceTitle,
@@ -1281,6 +1578,7 @@ const parseRssItems = (xml: string, sourceTitle: string, limit = 8): FollowingFe
 				publishedAt,
 				summary: summary.slice(0, 300),
 				photoUrl: photoUrl || undefined,
+				inboundRepliesFromFeed: inboundRepliesFromFeed.length > 0 ? inboundRepliesFromFeed : undefined,
 			} satisfies FollowingFeedItem;
 		})
 		.filter((item): item is FollowingFeedItem => Boolean(item));
@@ -1378,6 +1676,10 @@ const parseFeedItemsUniversal = (xml: string, sourceTitle: string, limit = 8): F
 					? getFirstChildTextByLocalName(entry, ['summary', 'content'])
 					: getFirstChildTextByLocalName(entry, ['description', 'encoded']);
 				const photoUrl = url ? getImageFromFeedEntry(entry, url) : '';
+				const contentRaw = getChildrenByLocalName(entry, ['content', 'encoded'])
+					.map((node) => node.textContent || '')
+					.join('\n');
+				const inboundRepliesFromFeed = contentRaw && url ? parseEmbeddedRepliesFromFeedContent(contentRaw, url) : [];
 
 				return {
 					sourceTitle,
@@ -1386,6 +1688,7 @@ const parseFeedItemsUniversal = (xml: string, sourceTitle: string, limit = 8): F
 					publishedAt,
 					summary: summary.slice(0, 300),
 					photoUrl: photoUrl || undefined,
+					inboundRepliesFromFeed: inboundRepliesFromFeed.length > 0 ? inboundRepliesFromFeed : undefined,
 				} satisfies FollowingFeedItem;
 			})
 			.filter((item) => Boolean(item.url) && Boolean(item.title));
@@ -1664,6 +1967,16 @@ const toDisplayHost = (url: string): string => {
 	}
 };
 
+const toReplyAuthorLabel = (authorName: string, authorUrl?: string, sourceUrl?: string): string => {
+	const normalizedAuthor = String(authorName || '').trim();
+	const isPlaceholder = /^replied\s+to\b/i.test(normalizedAuthor) || /^unknown author$/i.test(normalizedAuthor);
+	const fallbackFromUrl = toDisplayHost(sourceUrl || authorUrl || '').trim();
+	const isLocalFallback = fallbackFromUrl === 'localhost' || fallbackFromUrl === '127.0.0.1';
+	const safeFallback = isLocalFallback ? '' : fallbackFromUrl;
+	if (isPlaceholder) return safeFallback || 'Unknown author';
+	return normalizedAuthor || safeFallback || 'Unknown author';
+};
+
 const toHost = (url: string): string => {
 	try {
 		return new URL(url).hostname.toLowerCase();
@@ -1717,12 +2030,64 @@ const toRelativeTime = (value: string): string => {
 	return `${Math.floor(diffMs / weekMs)}w ago`;
 };
 
+const toPublishedTimestamp = (value: string): number => {
+	const raw = String(value || '').trim();
+	if (!raw) return 0;
+	if (/^\d+$/.test(raw)) {
+		const numeric = Number(raw);
+		if (Number.isFinite(numeric)) {
+			const epochMs = numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+			return Number.isFinite(epochMs) ? epochMs : 0;
+		}
+	}
+	const parsed = new Date(raw);
+	return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
 const toDisplayDate = (value: string): string => {
 	return toRelativeTime(value);
 };
 
 const toDisplayDateTime = (value: string): string => {
 	return toRelativeTime(value);
+};
+
+const isGenericReplyText = (value: string): boolean => {
+	const normalized = String(value || '')
+		.trim()
+		.toLowerCase();
+	return normalized === 'reply text';
+};
+
+const scoreReplyQuality = (reply: { author: string; text: string; sourceUrl?: string; authorUrl?: string; displayDate?: string }): number => {
+	let score = 0;
+	if (!isGenericReplyText(reply.text)) score += 5;
+	if (reply.text.trim().length >= 6) score += 2;
+	if (reply.sourceUrl && /^https:\/\//i.test(reply.sourceUrl)) score += 2;
+	if (reply.authorUrl && /^https:\/\//i.test(reply.authorUrl)) score += 1;
+	if (reply.author && !/^(localhost|127\.0\.0\.1)$/i.test(reply.author.trim())) score += 1;
+	if (reply.displayDate && reply.displayDate !== 'just now') score += 1;
+	return score;
+};
+
+const toLastNonEmptyCommentText = (outbound?: OutboundWebmentionRecord): string => {
+	if (!outbound) return '';
+	const fromHistory = [...(outbound.commentHistory || [])]
+		.reverse()
+		.map((entry) => String(entry.text || '').trim())
+		.find((text) => text.length > 0);
+	return fromHistory || String(outbound.commentText || '').trim();
+};
+
+const areUrlsEquivalent = (left: string, right: string): boolean => {
+	const leftRaw = String(left || '').trim();
+	const rightRaw = String(right || '').trim();
+	if (!leftRaw || !rightRaw) return false;
+	try {
+		return normalizeUrl(leftRaw) === normalizeUrl(rightRaw);
+	} catch {
+		return leftRaw === rightRaw;
+	}
 };
 
 const loadLocalFollowingFeedItems = async (
@@ -1742,9 +2107,9 @@ const loadLocalFollowingFeedItems = async (
 	const itemsByCollection = await Promise.all(
 		collections.map(async (collection) => {
 			try {
-				const items = await sonicGetContent(collection.name, statusFilter, options?.backendOptions);
-				return items.map((item) => {
-					const dataObject = item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : {};
+					const items = await sonicGetContent(collection.name, statusFilter, options?.backendOptions);
+					return items.map((item) => {
+						const dataObject = item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : {};
 					const title =
 						(typeof dataObject.title === 'string' && dataObject.title.trim()) ||
 						item.title ||
@@ -1755,21 +2120,23 @@ const loadLocalFollowingFeedItems = async (
 						(typeof dataObject.caption === 'string' && dataObject.caption) ||
 						(typeof dataObject.contentText === 'string' && dataObject.contentText) ||
 						(typeof dataObject.content === 'string' ? stripTags(dataObject.content) : '');
-					const publishedAt =
-						(typeof dataObject.publishedAt === 'string' && dataObject.publishedAt) ||
-						(typeof dataObject.createdAt === 'string' && dataObject.createdAt) ||
-						item.updatedAt ||
-						item.createdAt ||
-						'';
-					return {
-						sourceTitle: source.title,
-						title: String(title),
-						url: `${currentOrigin}/${encodeURIComponent(collection.name)}/${encodeURIComponent(item.slug)}`,
-						publishedAt,
-						summary: String(summarySource).slice(0, 300),
-					} satisfies FollowingFeedItem;
-				});
-			} catch {
+						const publishedAt =
+							(typeof dataObject.publishedAt === 'string' && dataObject.publishedAt) ||
+							(typeof dataObject.createdAt === 'string' && dataObject.createdAt) ||
+							item.updatedAt ||
+							item.createdAt ||
+							'';
+						const photoUrl = resolveFollowingLocalItemImageUrl(dataObject, currentOrigin);
+						return {
+							sourceTitle: source.title,
+							title: String(title),
+							url: `${currentOrigin}/${encodeURIComponent(collection.name)}/${encodeURIComponent(item.slug)}`,
+							publishedAt,
+							summary: String(summarySource).slice(0, 300),
+							photoUrl: photoUrl || undefined,
+						} satisfies FollowingFeedItem;
+					});
+				} catch {
 				return [] as FollowingFeedItem[];
 			}
 		})
@@ -1777,7 +2144,7 @@ const loadLocalFollowingFeedItems = async (
 
 	return itemsByCollection
 		.flat()
-		.sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')))
+		.sort((a, b) => toPublishedTimestamp(b.publishedAt) - toPublishedTimestamp(a.publishedAt))
 		.slice(0, 8);
 };
 
@@ -1893,8 +2260,34 @@ const isUrlLikeTitle = (title: string): boolean => /^https?:\/\//i.test(title) |
 
 const enrichFollowingFeedItem = async (item: FollowingFeedItem): Promise<FollowingFeedItem> => {
 	try {
-		const html = await fetchTextWithTimeout(item.url, 'text/html,application/xhtml+xml,*/*', 4500);
-		const details = parseLinkedPageDetails(html, item.url);
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 4500);
+		let response: Response;
+		try {
+			response = await fetchBackend(
+				item.url,
+				{
+					method: 'GET',
+					redirect: 'follow',
+					headers: {
+						accept: 'text/html,application/xhtml+xml,*/*',
+						'user-agent': 'indie-web-starter-following/1.0',
+					},
+					signal: controller.signal,
+				},
+				undefined
+			);
+		} finally {
+			clearTimeout(timeoutId);
+		}
+		if (!response.ok) return item;
+		const finalUrl = response.url || item.url;
+		const linkHeader = response.headers.get('link') || '';
+		const endpointFromHeader = linkHeader ? resolveEndpointFromLinkHeader(linkHeader, finalUrl) : '';
+		const html = await response.text().catch(() => '');
+		const endpointFromHtml = html ? resolveEndpointFromHtml(html, finalUrl) : '';
+		const webmentionEndpoint = endpointFromHeader || endpointFromHtml || '';
+		const details = parseLinkedPageDetails(html, finalUrl);
 		const nextTitle = details.title && (isUrlLikeTitle(item.title) || item.title.length < 8) ? details.title : item.title;
 		const nextSummary = item.summary || details.summary || '';
 		const nextPhoto = item.photoUrl || details.photoUrl;
@@ -1913,6 +2306,8 @@ const enrichFollowingFeedItem = async (item: FollowingFeedItem): Promise<Followi
 			authorUrl: nextAuthorUrl,
 			publishedAt: nextPublishedAt,
 			categories: nextCategories,
+			webmentionEndpoint: webmentionEndpoint || undefined,
+			hasWebmentionEndpoint: Boolean(webmentionEndpoint),
 			microformats: {
 				...(item.microformats || {}),
 				...(details.microformats || {}),
@@ -1947,8 +2342,13 @@ const mapFollowingFeedItemsForDisplay = (
 	outboundByTarget = new Map<string, OutboundWebmentionRecord>(),
 	inboundRepliesByTarget = new Map<string, InboundReplyRecord[]>(),
 	commentAuthorName = 'You'
-) =>
-	items.map((item) => {
+) => {
+	const selfReplyHosts = new Set(
+		Array.from(outboundByTarget.values())
+			.map((record) => toHost(record.sourceUrl || ''))
+			.filter((host) => host.length > 0)
+	);
+	return items.map((item) => {
 		let normalizedTarget = item.url;
 		let normalizedTargetNoQuery = item.url;
 		let targetHostPathKey = '';
@@ -1963,30 +2363,83 @@ const mapFollowingFeedItemsForDisplay = (
 			outboundByTarget.get(normalizedTarget) ||
 			outboundByTarget.get(normalizedTargetNoQuery) ||
 			(targetHostPathKey ? outboundByTarget.get(targetHostPathKey) : undefined);
+		const outboundReplyText = toLastNonEmptyCommentText(outbound);
 		const previousComments = (outbound?.commentHistory || []).map((entry) => ({
 			author: commentAuthorName,
 			text: entry.text,
 			displayDate: toDisplayDateTime(entry.attemptedAt),
+			authorUrl: '',
+			authorPhoto: '',
+			sourceUrl: '',
+			isOwn: true,
 		}));
 		const ownCommentTexts = new Set(previousComments.map((entry) => entry.text.trim().toLowerCase()).filter((entry) => entry.length > 0));
-		const inboundReplies = (
-			inboundRepliesByTarget.get(normalizedTarget) ||
-			inboundRepliesByTarget.get(normalizedTargetNoQuery) ||
-			(targetHostPathKey ? inboundRepliesByTarget.get(targetHostPathKey) : undefined) ||
-			[]
-		)
+		const inboundRepliesFromFeed = (item.inboundRepliesFromFeed || [])
 			.filter((entry) => {
 				const normalizedText = entry.contentText.trim().toLowerCase();
-				return normalizedText.length > 0 && !ownCommentTexts.has(normalizedText);
+				return normalizedText.length > 0;
 			})
 			.map((entry) => ({
-				author: entry.authorName || 'Unknown author',
+				author: toReplyAuthorLabel(entry.authorName || '', entry.authorUrl, entry.sourceUrl),
 				authorUrl: entry.authorUrl || '',
 				authorPhoto: entry.authorPhoto || '',
 				text: entry.contentText,
 				displayDate: toDisplayDateTime(entry.publishedAt),
 				sourceUrl: entry.sourceUrl || '',
+				isOwn: false,
 			}));
+		const inboundRepliesFromWebmentions = (
+			inboundRepliesByTarget.get(normalizedTarget) ||
+			inboundRepliesByTarget.get(normalizedTargetNoQuery) ||
+			(targetHostPathKey ? inboundRepliesByTarget.get(targetHostPathKey) : undefined) ||
+			[]
+		)
+			.map((entry) => ({
+				author: toReplyAuthorLabel(entry.authorName || '', entry.authorUrl, entry.sourceUrl),
+				authorUrl: entry.authorUrl || '',
+				authorPhoto: entry.authorPhoto || '',
+				text:
+					isGenericReplyText(entry.contentText) &&
+					outboundReplyText &&
+					(!entry.sourceUrl || areUrlsEquivalent(entry.sourceUrl, outbound?.sourceUrl || ''))
+						? outboundReplyText
+						: entry.contentText,
+				displayDate: toDisplayDateTime(entry.publishedAt),
+				sourceUrl: entry.sourceUrl || '',
+				isOwn: false,
+			}))
+			.filter((entry) => {
+				const normalizedText = entry.text.trim().toLowerCase();
+				const sourceHost = toHost(entry.sourceUrl || '');
+				const authorHost = toHost(entry.authorUrl || '');
+				const isSelfReply = (sourceHost && selfReplyHosts.has(sourceHost)) || (authorHost && selfReplyHosts.has(authorHost));
+				if (normalizedText.length === 0) return false;
+				if (ownCommentTexts.has(normalizedText)) return false;
+				if (isSelfReply) return false;
+				if (isGenericReplyText(entry.text) && entry.sourceUrl && areUrlsEquivalent(entry.sourceUrl, outbound?.sourceUrl || '')) {
+					return false;
+				}
+				return true;
+			});
+		const inboundReplies = [...inboundRepliesFromFeed, ...inboundRepliesFromWebmentions];
+		const dedupedBySource = new Map<string, (typeof inboundReplies)[number]>();
+		const dedupedBySignature = new Set<string>();
+		for (const reply of inboundReplies) {
+			const sourceKey = reply.sourceUrl.trim().toLowerCase();
+			if (sourceKey) {
+				const existing = dedupedBySource.get(sourceKey);
+				if (!existing || scoreReplyQuality(reply) > scoreReplyQuality(existing)) {
+					dedupedBySource.set(sourceKey, reply);
+				}
+				continue;
+			}
+			const signature = [reply.author.trim().toLowerCase(), reply.text.trim().toLowerCase()].join('|');
+			if (dedupedBySignature.has(signature)) continue;
+			dedupedBySignature.add(signature);
+			dedupedBySource.set(`sig:${signature}`, reply);
+		}
+		const dedupedInboundReplies = Array.from(dedupedBySource.values());
+		const conversationEntries = [...previousComments, ...dedupedInboundReplies];
 		return {
 			...item,
 			displaySource: item.sourceTitle || toDisplayHost(item.url),
@@ -2002,12 +2455,15 @@ const mapFollowingFeedItemsForDisplay = (
 			microformatsPreview: toMicroformatsPreview(item.microformats),
 			outboundBadge: outbound?.status ? `${outbound.mentionType} ${outbound.status}` : '',
 			outboundError: outbound?.errorMessage || '',
-			isLiked: Boolean(outbound?.hasSuccessfulLike || (outbound?.mentionType === 'like' && outbound?.status === 'sent')),
-			previousComment: outbound?.commentText || '',
-			previousComments,
-			inboundReplies,
-		};
+				isLiked: Boolean(outbound?.hasSuccessfulLike || (outbound?.mentionType === 'like' && outbound?.status === 'sent')),
+				webmentionAvailable: Boolean(item.hasWebmentionEndpoint),
+				previousComment: outbound?.commentText || '',
+				previousComments,
+				inboundReplies: dedupedInboundReplies,
+				conversationEntries,
+			};
 	});
+};
 
 const loadFollowingFeedItems = async (
 	sources: FollowingSourceItem[],
@@ -2015,12 +2471,6 @@ const loadFollowingFeedItems = async (
 ): Promise<FollowingFeedItem[]> => {
 	const output: FollowingFeedItem[] = [];
 	for (const source of sources.slice(0, 12)) {
-		const localItems = await loadLocalFollowingFeedItems(source, options).catch(() => []);
-		if (localItems.length > 0) {
-			output.push(...localItems);
-			continue;
-		}
-
 		const resolvedFeedUrl = source.feedUrl || (await discoverFeedUrl(source.siteUrl)) || '';
 		const fetchTargets = [resolvedFeedUrl, source.siteUrl].filter(Boolean);
 
@@ -2078,9 +2528,9 @@ const loadFollowingFeedItems = async (
 		}
 	}
 
-	const sorted = output.sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''))).slice(0, 30);
+	const sorted = output.sort((a, b) => toPublishedTimestamp(b.publishedAt) - toPublishedTimestamp(a.publishedAt)).slice(0, 30);
 
-	const enrichCount = Math.min(sorted.length, 12);
+	const enrichCount = sorted.length;
 	const enriched = await Promise.all(sorted.slice(0, enrichCount).map((item) => enrichFollowingFeedItem(item)));
 	return [...enriched, ...sorted.slice(enrichCount)];
 };

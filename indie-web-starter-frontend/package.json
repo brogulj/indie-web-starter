@@ -7,9 +7,9 @@
 		"prestart": "npm run templates:index && npm run pages:index && npm run collections-archive:index",
 		"css:build": "npx @tailwindcss/cli -i ./src/styles/input.css -o ./public/output.css",
 		"css:watch": "npx @tailwindcss/cli -i ./src/styles/input.css -o ./public/output.css --watch",
-		"dev": "npm run css:build && concurrently \"npm run css:watch\" \"npm run templates:index:watch\" \"npm run pages:index:watch\" \"npm run collections-archive:index:watch\" \"wrangler dev\"",
+		"dev": "npm run css:build && concurrently \"npm run css:watch\" \"npm run templates:index:watch\" \"npm run pages:index:watch\" \"npm run collections-archive:index:watch\" \"wrangler dev --port 8787\"",
 		"deploy": "wrangler deploy --env=production",
-		"start": "wrangler dev",
+		"start": "wrangler dev --port 8787",
 		"test": "vitest",
 		"cf-typegen": "wrangler types",
 		"collections:typegen": "node ./scripts/generate-collection-types.mjs",
@@ -18,7 +18,8 @@
 		"pages:index": "node ./scripts/generate-pages-index.mjs",
 		"pages:index:watch": "node ./scripts/generate-pages-index.mjs --watch",
 		"collections-archive:index": "node ./scripts/generate-collections-archive-index.mjs",
-		"collections-archive:index:watch": "node ./scripts/generate-collections-archive-index.mjs --watch"
+		"collections-archive:index:watch": "node ./scripts/generate-collections-archive-index.mjs --watch",
+		"recommended-feeds:generate": "node ./scripts/generate-recommended-feeds.mjs"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.12.4",

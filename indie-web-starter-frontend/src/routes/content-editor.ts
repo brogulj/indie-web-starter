@@ -1,6 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { render } from '../render';
 import { resolveBaseCollections } from '../services/required-collections';
+import { dashboardFlashTemplate, dashboardLocalNavTemplate, dashboardPageHeaderTemplate } from '../templates/dashboard-shell';
 import {
 	collectionFieldKindsMap,
 	collectionRequiredFieldsMap,
@@ -48,6 +49,11 @@ type EditorViewModel = {
 	fieldDefinitions?: EditorFieldDefinition[];
 	formError?: string;
 	formSuccess?: string;
+};
+
+type CollectionListFilters = {
+	searchQuery: string;
+	status: 'all' | ContentStatus;
 };
 
 type FieldKind =
@@ -111,40 +117,40 @@ class ContentApiError extends Error {
 }
 
 const editorTemplate = /* html */ `
-<section class="border border-gray-300 p-4">
+<section class="rounded-lg border border-gray-200 bg-white p-4">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <h1 class="text-2xl font-semibold">{{pageTitle}}</h1>
-    <a class="underline text-sm" href="/dashboard">Back to dashboard</a>
+    <a class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50" href="/dashboard">Back to dashboard</a>
   </div>
   <p class="mt-2 text-sm text-gray-700">Create, edit, and publish content data.</p>
 
   {{#formError}}
-  <p class="mt-3 border border-red-300 bg-red-50 p-2 text-sm text-red-700">{{formError}}</p>
+  <p class="mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{{formError}}</p>
   {{/formError}}
 
   {{#formSuccess}}
-  <p class="mt-3 border border-green-300 bg-green-50 p-2 text-sm text-green-700">{{formSuccess}}</p>
+  <p class="mt-3 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700">{{formSuccess}}</p>
   {{/formSuccess}}
 
-  <form method="post" action="{{formAction}}" class="mt-4 space-y-3">
+  <form method="post" action="{{formAction}}" class="mt-4 space-y-4">
     <input type="hidden" name="collectionId" value="{{collectionId}}" />
     <label class="block text-sm">
-      <span class="mb-1 block">Collection</span>
-      <input value="{{collectionTitle}}" disabled class="w-full border border-gray-300 bg-gray-50 px-3 py-2 text-gray-700" />
+      <span class="mb-1 block font-medium text-gray-700">Collection</span>
+      <input value="{{collectionTitle}}" disabled class="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-gray-700" />
     </label>
 
     <label class="block text-sm">
-      <span class="mb-1 block">Title</span>
-      <input name="title" required value="{{contentTitle}}" class="w-full border border-gray-300 px-3 py-2" />
+      <span class="mb-1 block font-medium text-gray-700">Title</span>
+      <input name="title" required value="{{contentTitle}}" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2" />
     </label>
 
     <label class="block text-sm">
-      <span class="mb-1 block">Slug</span>
+      <span class="mb-1 block font-medium text-gray-700">Slug</span>
       <input
         name="slug"
         required
         value="{{slug}}"
-        class="w-full border border-gray-300 px-3 py-2 font-mono"
+        class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono"
         pattern="[a-z0-9\\-]+"
         spellcheck="false"
         inputmode="text"
@@ -154,8 +160,8 @@ const editorTemplate = /* html */ `
     </label>
 
     <label class="block text-sm">
-      <span class="mb-1 block">Status</span>
-      <select name="status" required class="w-full border border-gray-300 px-3 py-2">
+      <span class="mb-1 block font-medium text-gray-700">Status</span>
+      <select name="status" required class="w-full rounded-md border border-gray-300 bg-white px-3 py-2">
         {{#statusOptions}}
         <option value="{{value}}" {{#isSelected}}selected{{/isSelected}}>{{value}}</option>
         {{/statusOptions}}
@@ -163,24 +169,25 @@ const editorTemplate = /* html */ `
     </label>
 
     {{#hasEditorFields}}
-    <section class="space-y-4 border border-gray-200 p-3">
+    <section class="mt-4">
       <h2 class="text-base font-semibold">Fields</h2>
+      <div class="mt-2 grid gap-2">
       {{#fieldDefinitions}}
-      <div class="space-y-2">
+      <div>
         <label class="block text-sm">
-          <span class="mb-1 block">{{label}}{{#required}} *{{/required}}</span>
+          <span class="mb-1 block font-medium text-gray-700">{{label}}{{#required}} *{{/required}}</span>
           <input type="hidden" name="fieldType:{{name}}" value="{{kind}}" />
           {{#isText}}
-          <input name="field:{{name}}" value="{{valueText}}" class="w-full border border-gray-300 px-3 py-2" />
+          <input name="field:{{name}}" value="{{valueText}}" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2" />
           {{/isText}}
           {{#isTextarea}}
-          <textarea name="field:{{name}}" rows="4" class="w-full border border-gray-300 px-3 py-2">{{valueText}}</textarea>
+          <textarea name="field:{{name}}" rows="4" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2">{{valueText}}</textarea>
           {{/isTextarea}}
           {{#isSlug}}
           <input
             name="field:{{name}}"
             value="{{valueText}}"
-            class="w-full border border-gray-300 px-3 py-2 font-mono"
+            class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono"
             spellcheck="false"
             pattern="[a-z0-9\\-]*"
             inputmode="text"
@@ -190,20 +197,20 @@ const editorTemplate = /* html */ `
           <p class="mt-1 text-xs text-gray-600">Use lowercase letters, numbers, and hyphens.</p>
           {{/isSlug}}
           {{#isDate}}
-          <input type="date" name="field:{{name}}" value="{{valueDate}}" class="w-full border border-gray-300 px-3 py-2" />
+          <input type="date" name="field:{{name}}" value="{{valueDate}}" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2" />
           {{/isDate}}
           {{#isDatetime}}
-          <input type="datetime-local" name="field:{{name}}" value="{{valueDateTime}}" class="w-full border border-gray-300 px-3 py-2" />
+          <input type="datetime-local" name="field:{{name}}" value="{{valueDateTime}}" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2" />
           {{/isDatetime}}
           {{#isSelect}}
-          <select name="field:{{name}}" class="w-full border border-gray-300 px-3 py-2">
+          <select name="field:{{name}}" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2">
             {{#selectOptions}}
             <option value="{{value}}" {{#isSelected}}selected{{/isSelected}}>{{value}}</option>
             {{/selectOptions}}
           </select>
           {{/isSelect}}
           {{#isReference}}
-          <select name="field:{{name}}" class="w-full border border-gray-300 px-3 py-2" {{#required}}required{{/required}}>
+          <select name="field:{{name}}" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2" {{#required}}required{{/required}}>
             <option value=""></option>
             {{#referenceOptions}}
             <option value="{{value}}" {{#isSelected}}selected{{/isSelected}}>{{label}}</option>
@@ -211,20 +218,20 @@ const editorTemplate = /* html */ `
           </select>
           {{/isReference}}
           {{#isNumber}}
-          <input type="number" name="field:{{name}}" value="{{valueNumber}}" class="w-full border border-gray-300 px-3 py-2" />
+          <input type="number" name="field:{{name}}" value="{{valueNumber}}" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2" />
           {{/isNumber}}
           {{#isBoolean}}
-          <select name="field:{{name}}" class="w-full border border-gray-300 px-3 py-2">
+          <select name="field:{{name}}" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2">
             <option value="true" {{#isTrue}}selected{{/isTrue}}>true</option>
             <option value="false" {{#isFalse}}selected{{/isFalse}}>false</option>
           </select>
           {{/isBoolean}}
           {{#isJson}}
-          <textarea name="field:{{name}}" rows="6" class="w-full border border-gray-300 px-3 py-2 font-mono text-sm">{{valueJson}}</textarea>
+          <textarea name="field:{{name}}" rows="6" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm">{{valueJson}}</textarea>
           {{/isJson}}
           {{#isObjectArray}}
           <div
-            class="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3"
+            class="space-y-2 rounded-md border border-gray-200 bg-white p-3"
             data-object-array-editor
             data-schema="{{objectArraySchemaJson}}"
             data-target-input="{{inputId}}"
@@ -241,7 +248,7 @@ const editorTemplate = /* html */ `
               <p class="text-xs text-gray-600">Fields: {{objectArrayFieldsHint}}</p>
               <button
                 type="button"
-                class="border border-gray-300 bg-white px-3 py-1 text-sm hover:bg-gray-100"
+                class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 transition hover:bg-gray-100"
                 data-object-array-add
               >
                 Add Item
@@ -250,33 +257,33 @@ const editorTemplate = /* html */ `
           </div>
           {{/isObjectArray}}
           {{#isMedia}}
-          <div class="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+          <div class="space-y-3 rounded-md border border-gray-200 bg-white p-3">
             {{#isMediaArray}}
             <textarea
               id="{{inputId}}"
               name="field:{{name}}"
               rows="4"
-              class="w-full border border-gray-300 bg-white px-3 py-2 font-mono text-sm"
+              class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm"
               placeholder="https://... (one URL per line)"
               {{#required}}required{{/required}}
               data-media-url
               data-media-multiple="true"
             >{{valueText}}</textarea>
-            <p class="text-xs text-gray-600">Use one image URL per line.</p>
+            <p class="mt-1 text-xs text-gray-600">Use one image URL per line.</p>
             {{/isMediaArray}}
             {{^isMediaArray}}
             <input
               id="{{inputId}}"
               name="field:{{name}}"
               value="{{valueText}}"
-              class="w-full border border-gray-300 bg-white px-3 py-2"
+              class="w-full rounded-md border border-gray-300 bg-white px-3 py-2"
               placeholder="https://..."
               {{#required}}required{{/required}}
               data-media-url
             />
             {{/isMediaArray}}
             <div class="flex flex-wrap items-center gap-2">
-              <input type="file" data-media-file data-target="{{inputId}}" data-folder="{{collectionFolder}}" data-media-multiple="{{#isMediaArray}}true{{/isMediaArray}}{{^isMediaArray}}false{{/isMediaArray}}" accept=".jpg,.jpeg,.png,.gif,.webp,.svg,image/jpeg,image/png,image/gif,image/webp,image/svg+xml" {{#isMediaArray}}multiple{{/isMediaArray}} class="block text-sm file:mr-3 file:cursor-pointer file:border file:border-gray-300 file:bg-white file:px-3 file:py-1 file:text-sm" />
+              <input type="file" data-media-file data-target="{{inputId}}" data-folder="{{collectionFolder}}" data-media-multiple="{{#isMediaArray}}true{{/isMediaArray}}{{^isMediaArray}}false{{/isMediaArray}}" accept=".jpg,.jpeg,.png,.gif,.webp,.svg,image/jpeg,image/png,image/gif,image/webp,image/svg+xml" {{#isMediaArray}}multiple{{/isMediaArray}} class="block text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-gray-300 file:bg-gray-50 file:px-3 file:py-1.5 file:text-sm" />
               <span class="text-xs text-gray-600" data-media-status data-target="{{inputId}}">{{#isMediaArray}}No images selected.{{/isMediaArray}}{{^isMediaArray}}No image selected.{{/isMediaArray}}</span>
             </div>
             <div class="hidden overflow-hidden rounded border border-gray-200 bg-white p-2" data-media-preview-wrap data-target="{{inputId}}" data-media-preview-multiple="{{#isMediaArray}}true{{/isMediaArray}}{{^isMediaArray}}false{{/isMediaArray}}">
@@ -295,7 +302,7 @@ const editorTemplate = /* html */ `
               id="{{inputId}}"
               name="field:{{name}}"
               rows="12"
-              class="w-full border border-gray-300 px-3 py-2 font-mono text-sm"
+              class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm"
               data-richtext-field
               data-folder="{{collectionFolder}}"
             >{{valueText}}</textarea>
@@ -304,17 +311,20 @@ const editorTemplate = /* html */ `
         </label>
       </div>
       {{/fieldDefinitions}}
+      </div>
     </section>
     {{/hasEditorFields}}
 
     {{^hasEditorFields}}
     <label class="block text-sm">
-      <span class="mb-1 block">Data (JSON)</span>
-      <textarea name="dataJson" rows="12" class="w-full border border-gray-300 px-3 py-2 font-mono text-sm">{{dataJson}}</textarea>
+      <span class="mb-1 block font-medium text-gray-700">Data (JSON)</span>
+      <textarea name="dataJson" rows="12" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm">{{dataJson}}</textarea>
     </label>
     {{/hasEditorFields}}
 
-    <button type="submit" class="border border-gray-300 bg-gray-100 px-4 py-2 text-sm">{{submitLabel}}</button>
+    <div class="pt-1">
+      <button type="submit" class="ml-auto rounded-md border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-black">{{submitLabel}}</button>
+    </div>
   </form>
 </section>
 
@@ -1025,16 +1035,16 @@ const editorTemplate = /* html */ `
 `;
 
 const collectionPickerTemplate = /* html */ `
-<section class="border border-gray-300 p-4">
+<section class="rounded-lg border border-gray-200 bg-white p-4">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <h1 class="text-2xl font-semibold">Create Content</h1>
-    <a class="underline text-sm" href="/dashboard">Back to dashboard</a>
+    <a class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50" href="/dashboard">Back to dashboard</a>
   </div>
   <p class="mt-2 text-sm text-gray-700">Choose a collection to create content.</p>
 
   <label class="mt-4 block text-sm">
-    <span class="mb-1 block">Collection</span>
-    <select data-collection-selector class="w-full border border-gray-300 px-3 py-2">
+    <span class="mb-1 block font-medium text-gray-700">Collection</span>
+    <select data-collection-selector class="w-full rounded-md border border-gray-300 bg-white px-3 py-2">
       <option value="">Select collection</option>
       {{#collectionOptions}}
       <option value="{{id}}">{{displayName}} ({{name}})</option>
@@ -1057,55 +1067,116 @@ const collectionPickerTemplate = /* html */ `
 `;
 
 const collectionListTemplate = /* html */ `
-<section class="border border-gray-300 p-4">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <div>
-      <h1 class="text-2xl font-semibold">{{pageTitle}}</h1>
-      <p class="mt-1 text-sm text-gray-700">Manage content items in this collection.</p>
+<section class="space-y-6">
+  ${dashboardLocalNavTemplate}
+  ${dashboardPageHeaderTemplate}
+  ${dashboardFlashTemplate}
+
+  <section class="rounded-lg border border-gray-200 bg-white p-4">
+    <div class="sticky top-2 z-10 grid gap-3 rounded-md border border-gray-200 bg-gray-50 p-3 md:grid-cols-[1fr_200px_auto]" data-collection-filters>
+      <label class="block">
+        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-600">Search</span>
+        <input
+          type="search"
+          placeholder="Search title or slug"
+          class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+          value="{{collectionListFilters.searchQuery}}"
+          data-collection-search
+        />
+      </label>
+
+      <label class="block">
+        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-600">Status</span>
+        <select class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm" data-status-filter>
+          <option value="all" {{#statusFilterAll}}selected{{/statusFilterAll}}>All statuses</option>
+          <option value="draft" {{#statusFilterDraft}}selected{{/statusFilterDraft}}>Draft</option>
+          <option value="published" {{#statusFilterPublished}}selected{{/statusFilterPublished}}>Published</option>
+          <option value="archived" {{#statusFilterArchived}}selected{{/statusFilterArchived}}>Archived</option>
+        </select>
+      </label>
+
+      <a class="inline-flex items-center rounded-md border border-gray-900 bg-gray-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-black" href="/dashboard/{{collectionPath}}/new">New Content</a>
     </div>
-    <div class="flex items-center gap-3">
-      <a class="underline text-sm" href="/dashboard">Back to dashboard</a>
-      <a class="border border-gray-300 bg-gray-100 px-3 py-1 text-sm" href="/dashboard/{{collectionPath}}/new">New Content</a>
+
+    {{#hasItems}}
+    <div class="mt-4 overflow-x-auto">
+      <table class="min-w-full border border-gray-200 text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="border border-gray-200 px-2 py-2 text-left text-xs uppercase tracking-wide text-gray-600">Title</th>
+            <th class="border border-gray-200 px-2 py-2 text-left text-xs uppercase tracking-wide text-gray-600">Status</th>
+            <th class="border border-gray-200 px-2 py-2 text-left text-xs uppercase tracking-wide text-gray-600">Updated</th>
+            <th class="hidden border border-gray-200 px-2 py-2 text-left text-xs uppercase tracking-wide text-gray-600 md:table-cell">Slug</th>
+            <th class="border border-gray-200 px-2 py-2 text-left text-xs uppercase tracking-wide text-gray-600">Actions</th>
+          </tr>
+        </thead>
+        <tbody data-collection-rows>
+          {{#items}}
+          <tr
+            data-collection-row
+            data-search="{{searchText}}"
+            data-status="{{statusLower}}"
+          >
+            <td class="border border-gray-200 px-2 py-2 align-top">
+              <p class="font-medium text-gray-900">{{displayTitle}}</p>
+              <p class="text-xs text-gray-600 md:hidden">{{slug}}</p>
+            </td>
+            <td class="border border-gray-200 px-2 py-2 align-top"><span class="inline-flex rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs">{{status}}</span></td>
+            <td class="border border-gray-200 px-2 py-2 align-top">{{updatedAtDisplay}}</td>
+            <td class="hidden border border-gray-200 px-2 py-2 align-top md:table-cell">{{slug}}</td>
+            <td class="border border-gray-200 px-2 py-2 align-top">
+              <a class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 transition hover:bg-gray-50" href="/dashboard/{{collectionPath}}/{{id}}">View / Edit</a>
+            </td>
+          </tr>
+          {{/items}}
+        </tbody>
+      </table>
     </div>
-  </div>
+    <p class="mt-3 hidden text-sm text-gray-600" data-filter-empty>No matching items for this filter.</p>
+    {{/hasItems}}
 
-  {{#formSuccess}}
-  <p class="mt-3 border border-green-300 bg-green-50 p-2 text-sm text-green-700">{{formSuccess}}</p>
-  {{/formSuccess}}
-
-  {{#hasItems}}
-  <div class="mt-4 overflow-x-auto">
-    <table class="min-w-full border border-gray-200 text-sm">
-      <thead class="bg-gray-50">
-        <tr>
-          <th class="border border-gray-200 px-2 py-2 text-left">Title</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Status</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Slug</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Updated</th>
-          <th class="border border-gray-200 px-2 py-2 text-left">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{#items}}
-        <tr>
-          <td class="border border-gray-200 px-2 py-2">{{title}}</td>
-          <td class="border border-gray-200 px-2 py-2">{{status}}</td>
-          <td class="border border-gray-200 px-2 py-2">{{slug}}</td>
-          <td class="border border-gray-200 px-2 py-2">{{updatedAt}}</td>
-          <td class="border border-gray-200 px-2 py-2">
-            <a class="underline" href="/dashboard/{{collectionPath}}/{{id}}">View / Edit</a>
-          </td>
-        </tr>
-        {{/items}}
-      </tbody>
-    </table>
-  </div>
-  {{/hasItems}}
-
-  {{^hasItems}}
-  <p class="mt-3 text-sm text-gray-700">No content found in this collection.</p>
-  {{/hasItems}}
+    {{^hasItems}}
+    <p class="mt-3 text-sm text-gray-600">No content found in this collection.</p>
+    {{/hasItems}}
+  </section>
 </section>
+
+<script>
+(() => {
+  const rows = Array.from(document.querySelectorAll('[data-collection-row]'));
+  if (rows.length === 0) return;
+  const searchInput = document.querySelector('[data-collection-search]');
+  const statusFilter = document.querySelector('[data-status-filter]');
+  const emptyState = document.querySelector('[data-filter-empty]');
+
+  if (!(searchInput instanceof HTMLInputElement)) return;
+  if (!(statusFilter instanceof HTMLSelectElement)) return;
+
+  const applyFilters = () => {
+    const query = searchInput.value.trim().toLowerCase();
+    const status = statusFilter.value.trim().toLowerCase();
+    let visibleCount = 0;
+
+    for (const row of rows) {
+      if (!(row instanceof HTMLElement)) continue;
+      const haystack = String(row.getAttribute('data-search') || '').toLowerCase();
+      const rowStatus = String(row.getAttribute('data-status') || '').toLowerCase();
+      const matchesQuery = !query || haystack.includes(query);
+      const matchesStatus = status === 'all' || rowStatus === status;
+      const isVisible = matchesQuery && matchesStatus;
+      row.classList.toggle('hidden', !isVisible);
+      if (isVisible) visibleCount += 1;
+    }
+
+    if (emptyState instanceof HTMLElement) {
+      emptyState.classList.toggle('hidden', visibleCount > 0);
+    }
+  };
+
+  searchInput.addEventListener('input', applyFilters);
+  statusFilter.addEventListener('change', applyFilters);
+})();
+</script>
 `;
 
 const asObject = (value: unknown): Record<string, unknown> | null => {
@@ -1128,7 +1199,18 @@ const toIsoDate = (value: unknown): string => {
 	return '';
 };
 
-const buildApiUrl = (path: string, options?: BackendRequestOptions): string => buildBackendUrl(path, { apiBaseUrl: options?.apiBaseUrl ?? API_BASE_URL });
+const toDateLabel = (value: string): string => {
+	const parsed = new Date(value);
+	if (Number.isNaN(parsed.getTime())) return 'Unknown';
+	return parsed.toLocaleDateString('en-US', {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+	});
+};
+
+const buildApiUrl = (path: string, options?: BackendRequestOptions): string =>
+	buildBackendUrl(path, { apiBaseUrl: options?.apiBaseUrl ?? API_BASE_URL });
 
 const parseContentItem = (value: unknown): DashboardContentItem | null => {
 	const obj = asObject(value);
@@ -1201,7 +1283,14 @@ const fetchApiJson = async <T>(path: string, init: RequestInit = {}, token?: str
 const loadCollectionOptions = async (options?: BackendRequestOptions): Promise<DashboardCollectionOption[]> => {
 	const collections = await sonicGetCollectionsCached(options);
 	return collections
-		.filter((collection) => !HIDDEN_CREATE_COLLECTIONS.has(String(collection.name || '').trim().toLowerCase()))
+		.filter(
+			(collection) =>
+				!HIDDEN_CREATE_COLLECTIONS.has(
+					String(collection.name || '')
+						.trim()
+						.toLowerCase()
+				)
+		)
 		.map((collection) => ({
 			id: collection.id,
 			name: collection.name,
@@ -1273,11 +1362,9 @@ const getFieldKind = (field: unknown): FieldKind => {
 	if (normalizedCandidates.some((value) => value === 'media' || value === 'image' || value === 'file' || value === 'upload'))
 		return 'media';
 	if (normalizedCandidates.some((value) => value === 'slug')) return 'slug';
-	if (normalizedCandidates.some((value) => value === 'datetime' || value === 'datetime-local' || value === 'timestamp'))
-		return 'datetime';
+	if (normalizedCandidates.some((value) => value === 'datetime' || value === 'datetime-local' || value === 'timestamp')) return 'datetime';
 	if (normalizedCandidates.some((value) => value === 'date')) return 'date';
-	if (normalizedCandidates.some((value) => value === 'reference' || value === 'relation' || value === 'relationship'))
-		return 'reference';
+	if (normalizedCandidates.some((value) => value === 'reference' || value === 'relation' || value === 'relationship')) return 'reference';
 	if (normalizedCandidates.some((value) => value === 'select' || value === 'enum')) return 'select';
 	if (normalizedCandidates.some((value) => value === 'textarea' || value === 'multiline')) return 'textarea';
 	if (normalizedCandidates.some((value) => value === 'boolean' || value === 'bool')) return 'boolean';
@@ -1421,8 +1508,7 @@ const toFieldDefinition = (
 		if (!itemProperties || typeof itemProperties !== 'object' || Array.isArray(itemProperties)) return '{}';
 		return JSON.stringify(itemProperties);
 	})();
-	const jsonValue =
-		resolvedKind === 'json' || resolvedKind === 'object-array' ? (value == null ? '' : JSON.stringify(value, null, 2)) : '';
+	const jsonValue = resolvedKind === 'json' || resolvedKind === 'object-array' ? (value == null ? '' : JSON.stringify(value, null, 2)) : '';
 	const objectArrayFieldsHint = (() => {
 		if (resolvedKind !== 'object-array') return '';
 		if (!field || typeof field !== 'object' || Array.isArray(field)) return '(none)';
@@ -1487,8 +1573,8 @@ const buildFieldDefinitions = async (
 				collection.schemaProperties && typeof collection.schemaProperties[name] === 'object'
 					? (collection.schemaProperties[name] as Record<string, unknown>)
 					: generatedSchemaProperties && typeof generatedSchemaProperties[name] === 'object'
-						? (generatedSchemaProperties[name] as Record<string, unknown>)
-						: undefined;
+					? (generatedSchemaProperties[name] as Record<string, unknown>)
+					: undefined;
 			const mergedField = schemaField ? { ...schemaField, type: fieldKind } : fieldKind;
 			return { name, mergedField, isRequired: required.has(name) };
 		});
@@ -1517,11 +1603,7 @@ const buildFieldDefinitions = async (
 		isRequired: required.has(name),
 	}));
 	const referenceCollections = Array.from(
-		new Set(
-			fields
-				.filter((entry) => getFieldKind(entry.field) === 'reference')
-				.flatMap((entry) => toReferenceCollectionIds(entry.field))
-		)
+		new Set(fields.filter((entry) => getFieldKind(entry.field) === 'reference').flatMap((entry) => toReferenceCollectionIds(entry.field)))
 	);
 	const referenceOptionsByCollection = await loadReferenceOptionsByCollection(referenceCollections);
 	return fields.map((entry) => {
@@ -1862,7 +1944,8 @@ const renderEditor = async (
 	const routeCollection = model.collectionRouteParam || model.collectionId;
 	const encodedRouteCollection = encodeURIComponent(routeCollection);
 	const selectedCollection = resolveSelectedCollection(collectionOptions, model.collectionId || routeCollection);
-	const collectionTitle = selectedCollection?.displayName || (await resolveCollectionTitle(model.collectionId || routeCollection, backendOptions));
+	const collectionTitle =
+		selectedCollection?.displayName || (await resolveCollectionTitle(model.collectionId || routeCollection, backendOptions));
 	const dataObject =
 		asObject(
 			(() => {
@@ -1962,18 +2045,40 @@ export const registerContentEditorRoutes = (app: Hono): void => {
 		} catch {
 			items = [];
 		}
+		const collectionListFilters: CollectionListFilters = {
+			searchQuery: '',
+			status: 'all',
+		};
 
 		return c.html(
 			render(collectionListTemplate, {
 				title: `Collection ${collectionTitle}`,
 				pageTitle: `Collection: ${collectionTitle}`,
+				pageDescription: 'Manage content items in this collection.',
+				hasPrimaryAction: true,
+				primaryActionHref: `/dashboard/${encodeURIComponent(resolved.routeParam)}/new`,
+				primaryActionLabel: 'New Content',
+				navOverviewActive: false,
+				navCollectionsActive: true,
+				navFollowingActive: false,
+				navFeedActive: false,
 				collectionPath: encodeURIComponent(resolved.routeParam),
 				items: items.map((item) => ({
 					...item,
+					displayTitle: item.title.trim() || 'Untitled',
+					searchText: `${item.title} ${item.slug}`.toLowerCase(),
+					statusLower: String(item.status).toLowerCase(),
+					updatedAtDisplay: toDateLabel(item.updatedAt),
 					collectionPath: encodeURIComponent(resolved.routeParam),
 				})),
 				hasItems: items.length > 0,
-				formSuccess: c.req.query('saved') === '1' ? 'Content saved.' : undefined,
+				flashSuccess: c.req.query('saved') === '1' ? 'Content saved.' : undefined,
+				flashError: undefined,
+				collectionListFilters,
+				statusFilterAll: collectionListFilters.status === 'all',
+				statusFilterDraft: collectionListFilters.status === 'draft',
+				statusFilterPublished: collectionListFilters.status === 'published',
+				statusFilterArchived: collectionListFilters.status === 'archived',
 				isAuthenticated: true,
 				authUser: user,
 				user,

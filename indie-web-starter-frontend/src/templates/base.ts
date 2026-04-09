@@ -9,8 +9,8 @@ export const base = (content: string) => /* html */ `
   <link rel="stylesheet" href="/output.css">
 </head>
 <body class="bg-white text-black">
-  <header class="mx-auto w-full max-w-5xl px-4 py-6">
-    <nav class="border border-gray-300 bg-gray-50 p-4">
+  <header class="mx-auto w-full max-w-5xl lg:px-4 lg:py-6 sticky top-0 z-10">
+    <nav class="border border-gray-300 bg-gray-50 p-4 z-10">
       <div class="flex flex-wrap items-center gap-2 text-sm">
         <div class="flex flex-wrap items-center gap-2">
           <a href="/" class="px-2 py-1 text-black underline">Home</a>
@@ -19,9 +19,6 @@ export const base = (content: string) => /* html */ `
         {{#isAuthenticated}}
           <a href="/dashboard/following/feed" class="px-2 py-1 text-black underline">Feed</a>
           <a href="/dashboard" class="px-2 py-1 text-black underline">Dashboard</a>
-          <form method="post" action="/logout" class="inline">
-            <button type="submit" class="px-2 py-1 text-black underline">Logout</button>
-          </form>
           {{/isAuthenticated}}
           {{^isAuthenticated}}
           <a href="/login" class="px-2 py-1 text-black underline">Login</a>

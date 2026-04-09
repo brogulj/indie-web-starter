@@ -26,3 +26,5 @@ sonicjs/
 # Keep example env files committed
 !**/.env.example
 !**/.dev.vars.example
+
+wrangler.jsonc
