@@ -60,6 +60,12 @@ export const collectionFieldKindsMap = {
   "posts": {
     "caption": "textarea",
     "media": "media-array"
+  },
+  "spotify-playlists": {
+    "spotifyPlaylistId": "string",
+    "description": "textarea",
+    "tags": "string",
+    "featuredImage": "media"
   }
 } as const;
 
@@ -102,6 +108,11 @@ export const collectionRequiredFieldsMap = {
     "title",
     "slug",
     "caption"
+  ],
+  "spotify-playlists": [
+    "title",
+    "slug",
+    "spotifyPlaylistId"
   ]
 } as const;
 
@@ -355,6 +366,28 @@ export const collectionSchemaPropertiesMap = {
       "type": "media",
       "title": "Media",
       "multiple": true
+    }
+  },
+  "spotify-playlists": {
+    "spotifyPlaylistId": {
+      "type": "string",
+      "title": "Spotify Playlist ID",
+      "required": true,
+      "helpText": "Use the value after /playlist/ in the Spotify URL (without query params)."
+    },
+    "description": {
+      "type": "textarea",
+      "title": "Description",
+      "maxLength": 1200
+    },
+    "tags": {
+      "type": "string",
+      "title": "Tags",
+      "helpText": "Comma-separated tags (genre, mood, activity, etc.)"
+    },
+    "featuredImage": {
+      "type": "media",
+      "title": "Cover Image"
     }
   }
 } as const;

@@ -9,6 +9,7 @@ import { OutboundWebmentionsTemplate } from './outbound-webmentions';
 import { OutfitsTemplate } from './outfits';
 import { PagesTemplate } from './pages';
 import { PostsTemplate } from './posts';
+import { SpotifyPlaylistsTemplate } from './spotify-playlists';
 
 export const collectionTemplates: Record<string, string> = {
 	'blog-posts': BlogPostsTemplate,
@@ -20,6 +21,7 @@ export const collectionTemplates: Record<string, string> = {
 	'outfits': OutfitsTemplate,
 	'pages': PagesTemplate,
 	'posts': PostsTemplate,
+	'spotify-playlists': SpotifyPlaylistsTemplate,
 };
 
 export const collectionRequiredData: Record<string, unknown> = {

@@ -8,6 +8,7 @@ import { NewsArchiveTemplate } from './news';
 import { OutfitsArchiveTemplate } from './outfits';
 import { PagesArchiveTemplate } from './pages';
 import { PostsArchiveTemplate } from './posts';
+import { SpotifyPlaylistsArchiveTemplate } from './spotify-playlists';
 
 export const collectionArchiveTemplates: Record<string, string> = {
 	'blog-posts': BlogPostsArchiveTemplate,
@@ -18,6 +19,7 @@ export const collectionArchiveTemplates: Record<string, string> = {
 	'outfits': OutfitsArchiveTemplate,
 	'pages': PagesArchiveTemplate,
 	'posts': PostsArchiveTemplate,
+	'spotify-playlists': SpotifyPlaylistsArchiveTemplate,
 };
 
 export const collectionArchiveRequiredData: Record<string, unknown> = {

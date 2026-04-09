@@ -16,7 +16,7 @@ export type CollectionDefinition = {
 	};
 };
 
-export const COLLECTION_COUNT = 8;
+export const COLLECTION_COUNT = 9;
 
 export interface BlogPostsCollectionData {
 	"excerpt"?: string;
@@ -154,7 +154,21 @@ export interface PostsCollectionFieldKinds {
 	"media": "media-array";
 }
 
-export type CollectionName = "blog-posts" | "events" | "movie-reviews" | "music-reviews" | "news" | "outfits" | "pages" | "posts";
+export interface SpotifyPlaylistsCollectionData {
+	"spotifyPlaylistId": string;
+	"description"?: string;
+	"tags"?: string;
+	"featuredImage"?: string;
+}
+
+export interface SpotifyPlaylistsCollectionFieldKinds {
+	"spotifyPlaylistId": "string";
+	"description": "textarea";
+	"tags": "string";
+	"featuredImage": "media";
+}
+
+export type CollectionName = "blog-posts" | "events" | "movie-reviews" | "music-reviews" | "news" | "outfits" | "pages" | "posts" | "spotify-playlists";
 
 export interface CollectionDataMap {
 	"blog-posts": BlogPostsCollectionData;
@@ -165,6 +179,7 @@ export interface CollectionDataMap {
 	"outfits": OutfitsCollectionData;
 	"pages": PagesCollectionData;
 	"posts": PostsCollectionData;
+	"spotify-playlists": SpotifyPlaylistsCollectionData;
 }
 
 export type CollectionData<K extends CollectionName = CollectionName> = CollectionDataMap[K];
@@ -178,6 +193,7 @@ export interface CollectionFieldKindsMap {
 	"outfits": OutfitsCollectionFieldKinds;
 	"pages": PagesCollectionFieldKinds;
 	"posts": PostsCollectionFieldKinds;
+	"spotify-playlists": SpotifyPlaylistsCollectionFieldKinds;
 }
 
 export type CollectionFieldKind<C extends CollectionName, F extends keyof CollectionFieldKindsMap[C]> = CollectionFieldKindsMap[C][F];

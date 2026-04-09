@@ -17,6 +17,7 @@ import movieReviewsCollection from "./collections/movie-reviews.collection";
 import outboundWebmentionsCollection from "./collections/outbound-webmentions.collection";
 import outfitsCollection from "./collections/outfits.collection";
 import postsCollection from "./collections/posts.collection";
+import spotifyPlaylistsCollection from "./collections/spotify-playlists.collection";
 import trustedWebmentionDomainsCollection from "./collections/trusted-webmention-domains.collection";
 import webmentionsCollection from "./collections/webmentions.collection";
 import webmentionApiRoutes from "./routes/webmentions";
@@ -32,6 +33,7 @@ registerCollections([
   outboundWebmentionsCollection,
   outfitsCollection,
   postsCollection,
+  spotifyPlaylistsCollection,
   webmentionsCollection,
   trustedWebmentionDomainsCollection,
   // Add more collections here as you create them
