@@ -24,7 +24,7 @@ export const base = (content: string) => /* html */ `
   </style>
 </head>
 <body class="bg-white text-black">
-  <header class="mx-auto w-full max-w-5xl lg:px-4 lg:py-6 sticky top-0 z-10 mb-5">
+  <header class="mx-auto w-full max-w-6xl lg:px-4 lg:py-6 sticky top-0 z-10 mb-5">
     <nav class="border border-gray-300 bg-gray-50 p-4 z-10">
       <div class="flex flex-wrap items-center gap-2 text-sm">
         <div class="flex flex-wrap items-center gap-2">
@@ -43,7 +43,7 @@ export const base = (content: string) => /* html */ `
     </nav>
   </header>
 
-  <main class="mx-auto w-full max-w-5xl px-4 pb-10">
+  <main class="mx-auto w-full max-w-6xl px-4 pb-10">
     {{#routeWarning}}
     <section class="mb-4 border border-yellow-400 bg-yellow-50 p-3 text-sm">
       {{routeWarning}}

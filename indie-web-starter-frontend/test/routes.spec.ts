@@ -204,6 +204,7 @@ describe('routes', () => {
 	});
 
 	it('renders specialized templates for events, reviews, and outfits', async () => {
+		const outfitLookups: Array<{ field: string; value: string }> = [];
 		vi.stubGlobal(
 			'fetch',
 			vi.fn((input: RequestInfo | URL) => {
@@ -212,7 +213,12 @@ describe('routes', () => {
 					return Promise.resolve(
 						jsonResponse({
 							collections: [
-								{ id: '1', name: 'events', display_name: 'Events', schema: { properties: { content: { type: 'richtext' } } } },
+								{
+									id: '1',
+									name: 'events',
+									display_name: 'Events',
+									schema: { properties: { content: { type: 'richtext' }, outfit: { type: 'reference', collection: 'outfits' } } },
+								},
 								{
 									id: '2',
 									name: 'movie-reviews',
@@ -304,6 +310,39 @@ describe('routes', () => {
 					);
 				}
 				if (url.includes('/api/collections/outfits/content') && url.includes('where=')) {
+					const parsedUrl = new URL(url);
+					const whereRaw = parsedUrl.searchParams.get('where') ?? '{}';
+					const where = JSON.parse(whereRaw) as { and?: Array<{ field?: string; value?: unknown }> };
+					const firstFilter = where.and?.[0];
+					const field = String(firstFilter?.field ?? '');
+					const value = String(firstFilter?.value ?? '');
+					outfitLookups.push({ field, value });
+
+					if (field === 'id' && value === 'city-night') {
+						return Promise.resolve(jsonResponse({ data: [] }));
+					}
+					if (field === 'slug' && value === 'city-night') {
+						return Promise.resolve(
+							jsonResponse({
+								data: [
+									{
+										id: 'outfit-1',
+										title: 'City Night',
+										slug: 'city-night',
+										status: 'published',
+										collectionId: 'outfits',
+										createdAt: '2026-01-01T00:00:00.000Z',
+										updatedAt: '2026-01-02T00:00:00.000Z',
+										data: {
+											mainImage: 'https://cdn.example.com/main-look.jpg',
+											pieces: [{ name: 'Jacket', image: { url: 'https://cdn.example.com/jacket.jpg' }, order: 1 }],
+										},
+									},
+								],
+							})
+						);
+					}
+
 					return Promise.resolve(
 						jsonResponse({
 							data: [
@@ -347,6 +386,9 @@ describe('routes', () => {
 		expect(eventsBody).toContain('Gallery');
 		expect(eventsBody).toContain('Rating:');
 		expect(eventsBody).toContain('/outfits/city-night');
+		expect(eventsBody).toContain('City Night');
+		expect(outfitLookups).toContainEqual({ field: 'id', value: 'city-night' });
+		expect(outfitLookups).toContainEqual({ field: 'slug', value: 'city-night' });
 
 		expect(movieResponse.status).toBe(200);
 		expect(movieBody).toContain('Score');
